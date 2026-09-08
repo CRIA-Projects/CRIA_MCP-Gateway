@@ -22,10 +22,10 @@ Identity Policy Access   Registry Router  Audit
 | Core | Orquesta requests MCP y respuestas JSON-RPC | Implementado |
 | Identity | Resuelve el principal de un request | Adaptador local simple |
 | Policy | Decide si un principal habilitado puede usar un MCP | Asignaciones estáticas, deny-by-default |
-| Access | Usuarios, MCPs y asignaciones; vista segura para el panel | En memoria / código |
+| Access | Usuarios, MCPs y asignaciones; API de administración protegida | Memoria local / Netlify Blobs |
 | Registry | Descubre herramientas y sus destinos por MCP | En memoria |
 | Router | Ejecuta una herramienta mediante su destino | Adaptador demo en memoria |
-| Audit | Registra decisiones y resultados | En memoria / logger |
+| Audit | Captura requests MCP sanitizados para el inspector admin | Memoria local / Netlify Blobs (últimos 200) |
 | Platform | HTTP local, panel estático y handlers Netlify | Implementado |
 
 ## Contratos y límites
@@ -41,13 +41,13 @@ Esto permite que un adaptador PostgreSQL, un validador JWT, o un cliente Streama
 3. Identity produce el principal y Policy verifica que esté habilitado y asignado al MCP solicitado.
 4. Registry devuelve solo las herramientas de ese MCP; Router ejecuta mediante su adaptador.
 5. Audit guarda decisiones de listado y llamada, aun las denegadas.
-6. El panel estático obtiene su vista de desarrollo desde `/admin/config`, la misma configuración que aplica la política.
+6. El panel estático usa `/admin/*` protegido por `ADMIN_API_KEY` para gestionar reglas y consultar eventos; la misma configuración se aplica a la siguiente llamada MCP.
 
 ## Deliberadamente fuera del MVP
 
 - OAuth/Supabase Auth, sesiones persistentes y multi-tenant real.
 - PostgreSQL/Supabase, colas y retención de auditoría.
-- CRUD administrativo/dinámico de MCPs, usuarios y asignaciones.
+- Autenticación/roles de administrador reales y auditoría con retención configurable.
 - Proxy Streamable HTTP real hacia MCPs externos.
 - Roles de administrador, dashboard seguro, analytics y microservicios.
 

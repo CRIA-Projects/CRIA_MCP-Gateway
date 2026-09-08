@@ -1,73 +1,33 @@
-const elements = {
-  dashboard: document.querySelector("#dashboard"),
-  error: document.querySelector("#load-error"),
-  mcpList: document.querySelector("#mcp-list"),
-  userList: document.querySelector("#user-list"),
-  assignmentList: document.querySelector("#assignment-list"),
-  mcpCount: document.querySelector("#mcp-count"),
-  userCount: document.querySelector("#user-count"),
-  form: document.querySelector("#access-tester"),
-  userSelect: document.querySelector("#test-user"),
-  mcpSelect: document.querySelector("#test-mcp"),
-  result: document.querySelector("#test-result")
-};
-
-let configuration;
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
+const $ = (selector) => document.querySelector(selector);
+const message = $("#message"), dashboard = $("#dashboard");
+let config, editingUserId, editingServerId;
+const key = () => sessionStorage.getItem("cria-admin-key") || "";
+const headers = () => ({ "content-type": "application/json", "x-admin-key": key() });
+const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[c]);
+function showMessage(text, isError = true) { message.textContent = text; message.className = isError ? "error" : "success"; message.hidden = false; }
+function clearMessage() { message.hidden = true; }
+async function api(path, options = {}) { const response = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } }); const body = response.status === 204 ? undefined : await response.json().catch(() => undefined); if (!response.ok) throw new Error(body?.error || `Error ${response.status}`); return body; }
+async function refresh() { config = await api("/admin/config", { headers: { accept: "application/json" } }); render(); await refreshLogs(); dashboard.hidden = false; }
+function options(items, label) { return items.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(label(item))}</option>`).join(""); }
+function render() {
+  const users = new Map(config.users.map((item) => [item.id, item])); const servers = new Map(config.mcpServers.map((item) => [item.id, item]));
+  $("#user-count").textContent = `${config.users.filter((user) => user.enabled).length}/${config.users.length} habilitados`;
+  $("#mcp-count").textContent = `${config.mcpServers.length} registrados`;
+  $("#user-list").innerHTML = config.users.map((user) => `<article class="card"><span class="tag ${user.enabled ? "enabled" : "disabled"}">${user.enabled ? "Habilitado" : "Deshabilitado"}</span><h3>${escapeHtml(user.name)}</h3><p><code>${escapeHtml(user.id)}</code></p><div class="actions"><button data-edit-user="${escapeHtml(user.id)}" class="secondary">Editar</button><button data-delete-user="${escapeHtml(user.id)}" class="danger">Eliminar</button></div></article>`).join("");
+  $("#mcp-list").innerHTML = config.mcpServers.map((server) => `<article class="card"><span class="tag ${server.kind === "remote" ? "remote" : "enabled"}">${server.kind === "remote" ? "Remoto" : "Demo"}</span><h3>${escapeHtml(server.name)}</h3><p>${escapeHtml(server.description)}</p><p><code>/mcp/${escapeHtml(server.id)}</code></p>${server.endpoint ? `<p class="endpoint">${escapeHtml(server.endpoint)}</p>` : ""}<div class="actions"><button data-edit-server="${escapeHtml(server.id)}" class="secondary">Editar</button><button data-delete-server="${escapeHtml(server.id)}" class="danger">Eliminar</button></div></article>`).join("");
+  $("#assignment-list").innerHTML = config.assignments.map((assignment) => `<article class="assignment"><strong>${escapeHtml(users.get(assignment.userId)?.name || assignment.userId)}</strong><span>puede acceder a</span><strong>${escapeHtml(servers.get(assignment.mcpServerId)?.name || assignment.mcpServerId)}</strong></article>`).join("") || "<p class=\"muted\">No hay accesos asignados.</p>";
+  document.querySelectorAll('select[name="userId"]').forEach((select) => select.innerHTML = options(config.users, (user) => `${user.name}${user.enabled ? "" : " (deshabilitado)"}`));
+  document.querySelectorAll('select[name="mcpServerId"]').forEach((select) => select.innerHTML = options(config.mcpServers, (server) => server.name));
 }
-
-function render(config) {
-  const usersById = new Map(config.users.map((user) => [user.id, user]));
-  const serversById = new Map(config.mcpServers.map((server) => [server.id, server]));
-  const enabledUsers = config.users.filter((user) => user.enabled);
-
-  elements.mcpCount.textContent = `${config.mcpServers.length} registrados`;
-  elements.userCount.textContent = `${enabledUsers.length} habilitados`;
-  elements.mcpList.innerHTML = config.mcpServers.map((server) => `
-    <article class="card"><h3>${escapeHtml(server.name)}</h3><p>${escapeHtml(server.description)}</p><p><code>/mcp/${escapeHtml(server.id)}</code></p></article>
-  `).join("");
-  elements.userList.innerHTML = config.users.map((user) => `
-    <article class="card"><span class="tag ${user.enabled ? "enabled" : "disabled"}">${user.enabled ? "Habilitado" : "Deshabilitado"}</span><h3>${escapeHtml(user.name)}</h3><p><code>${escapeHtml(user.id)}</code></p></article>
-  `).join("");
-  elements.assignmentList.innerHTML = config.assignments.map((assignment) => {
-    const user = usersById.get(assignment.userId);
-    const server = serversById.get(assignment.mcpServerId);
-    return `<article class="assignment"><strong>${escapeHtml(user?.name ?? assignment.userId)}</strong><span>puede acceder a</span><strong>${escapeHtml(server?.name ?? assignment.mcpServerId)}</strong></article>`;
-  }).join("") || "<p>No hay asignaciones configuradas.</p>";
-
-  elements.userSelect.innerHTML = config.users.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.name)}${user.enabled ? "" : " (deshabilitado)"}</option>`).join("");
-  elements.mcpSelect.innerHTML = config.mcpServers.map((server) => `<option value="${escapeHtml(server.id)}">${escapeHtml(server.name)}</option>`).join("");
-}
-
-async function loadConfiguration() {
-  const response = await fetch("/admin/config", { headers: { accept: "application/json" } });
-  if (!response.ok) throw new Error(`No se pudo cargar la configuración (${response.status}).`);
-  configuration = await response.json();
-  render(configuration);
-  elements.dashboard.hidden = false;
-}
-
-elements.form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const userId = elements.userSelect.value;
-  const mcpServerId = elements.mcpSelect.value;
-  elements.result.textContent = "Consultando gateway…";
-  try {
-    const response = await fetch(`/mcp/${encodeURIComponent(mcpServerId)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-client-id": userId },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} })
-    });
-    const body = await response.json();
-    elements.result.textContent = JSON.stringify({ httpStatus: response.status, ...body }, null, 2);
-  } catch (error) {
-    elements.result.textContent = `No se pudo consultar el gateway: ${error instanceof Error ? error.message : "error desconocido"}`;
-  }
-});
-
-loadConfiguration().catch((error) => {
-  elements.error.textContent = error instanceof Error ? error.message : "No se pudo cargar la configuración.";
-  elements.error.hidden = false;
-});
+async function refreshLogs() { const { events } = await api("/admin/logs?limit=100"); $("#log-list").innerHTML = events.map((event) => `<details class="log"><summary><span class="tag ${event.decision}">${escapeHtml(event.decision)}</span> <strong>${escapeHtml(event.rpcMethod || "invalid request")}</strong> <span>${escapeHtml(event.clientId || "unknown user")} → ${escapeHtml(event.mcpServerId || "unknown MCP")}</span><time>${new Date(event.at).toLocaleString()}</time></summary><pre>${escapeHtml(JSON.stringify(event, null, 2))}</pre></details>`).join("") || "<p class=\"muted\">Todavía no llegaron requests al gateway.</p>"; }
+function resetUser() { editingUserId = undefined; $("#user-form").reset(); $("#user-form-title").textContent = "Nuevo usuario"; $("#user-form [name=id]").disabled = false; $("#cancel-user").hidden = true; }
+function resetServer() { editingServerId = undefined; $("#server-form").reset(); $("#server-form-title").textContent = "Nuevo MCP"; $("#server-form [name=id]").disabled = false; $("#cancel-server").hidden = true; toggleEndpoint(); }
+function toggleEndpoint() { const remote = $("#server-form [name=kind]").value === "remote"; $("#endpoint-field").hidden = !remote; $("#server-form [name=endpoint]").required = remote; }
+$("#login-form").addEventListener("submit", async (event) => { event.preventDefault(); sessionStorage.setItem("cria-admin-key", $("#admin-key").value); try { clearMessage(); await refresh(); } catch (error) { showMessage(error.message); sessionStorage.removeItem("cria-admin-key"); } });
+$("#user-form").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const body = { id: data.get("id"), name: data.get("name"), enabled: data.has("enabled") }; try { await api(editingUserId ? `/admin/users/${editingUserId}` : "/admin/users", { method: editingUserId ? "PATCH" : "POST", body: JSON.stringify(editingUserId ? { name: body.name, enabled: body.enabled } : body) }); resetUser(); await refresh(); showMessage("Usuario guardado.", false); } catch (error) { showMessage(error.message); } });
+$("#server-form").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const body = { id: data.get("id"), name: data.get("name"), description: data.get("description"), kind: data.get("kind"), endpoint: data.get("endpoint") || undefined }; try { await api(editingServerId ? `/admin/servers/${editingServerId}` : "/admin/servers", { method: editingServerId ? "PATCH" : "POST", body: JSON.stringify(editingServerId ? { name: body.name, description: body.description, kind: body.kind, endpoint: body.endpoint } : body) }); resetServer(); await refresh(); showMessage("MCP guardado.", false); } catch (error) { showMessage(error.message); } });
+$("#access-form").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const granted = event.submitter?.value !== "false"; try { await api("/admin/access", { method: "PUT", body: JSON.stringify({ userId: data.get("userId"), mcpServerId: data.get("mcpServerId"), granted }) }); await refresh(); showMessage(granted ? "Acceso habilitado." : "Acceso revocado.", false); } catch (error) { showMessage(error.message); } });
+$("#access-tester").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/mcp/${encodeURIComponent(data.get("mcpServerId"))}`, { method: "POST", headers: { "content-type": "application/json", "x-client-id": data.get("userId") }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) }); $("#test-result").textContent = JSON.stringify({ httpStatus: response.status, ...(await response.json()) }, null, 2); await refreshLogs(); });
+document.addEventListener("click", async (event) => { const target = event.target; if (!(target instanceof HTMLButtonElement)) return; const user = target.dataset.editUser || target.dataset.deleteUser; const server = target.dataset.editServer || target.dataset.deleteServer; try { if (target.dataset.editUser) { const value = config.users.find((item) => item.id === user); editingUserId = user; $("#user-form-title").textContent = `Editar ${value.name}`; $("#user-form [name=id]").value = value.id; $("#user-form [name=id]").disabled = true; $("#user-form [name=name]").value = value.name; $("#user-form [name=enabled]").checked = value.enabled; $("#cancel-user").hidden = false; } if (target.dataset.deleteUser && confirm(`Eliminar ${user}?`)) { await api(`/admin/users/${user}`, { method: "DELETE" }); await refresh(); } if (target.dataset.editServer) { const value = config.mcpServers.find((item) => item.id === server); editingServerId = server; $("#server-form-title").textContent = `Editar ${value.name}`; ["id", "name", "description", "kind", "endpoint"].forEach((name) => $("#server-form [name=" + name + "]").value = value[name] || ""); $("#server-form [name=id]").disabled = true; $("#cancel-server").hidden = false; toggleEndpoint(); } if (target.dataset.deleteServer && confirm(`Eliminar ${server}?`)) { await api(`/admin/servers/${server}`, { method: "DELETE" }); await refresh(); } } catch (error) { showMessage(error.message); } });
+$("#cancel-user").addEventListener("click", resetUser); $("#cancel-server").addEventListener("click", resetServer); $("#server-form [name=kind]").addEventListener("change", toggleEndpoint); $("#refresh-logs").addEventListener("click", () => refreshLogs().catch((error) => showMessage(error.message)));
+if (key()) refresh().catch((error) => { sessionStorage.removeItem("cria-admin-key"); showMessage(error.message); });

@@ -1,73 +1,17 @@
-<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CRIA MCP Gateway · Accesos</title>
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <main class="shell">
-      <header class="hero">
-        <p class="eyebrow">CRIA MCP GATEWAY</p>
-        <h1>Accesos a MCPs</h1>
-        <p class="lede">Vista de configuración del entorno de desarrollo. El gateway aplica estas asignaciones en cada llamada.</p>
-      </header>
-
-      <section class="notice" aria-label="Limitación del entorno de desarrollo">
-        <strong>Modo desarrollo:</strong> los usuarios y permisos están definidos en código. El identificador <code>x-client-id</code> no es autenticación segura y será reemplazado por Supabase Auth.
-      </section>
-
-      <p id="load-error" class="error" role="alert" hidden></p>
-
-      <div id="dashboard" hidden>
-        <section aria-labelledby="mcps-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">REGISTRO</p>
-              <h2 id="mcps-title">MCPs registrados</h2>
-            </div>
-            <span id="mcp-count" class="count"></span>
-          </div>
-          <div id="mcp-list" class="card-grid"></div>
-        </section>
-
-        <section aria-labelledby="users-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">IDENTIDAD</p>
-              <h2 id="users-title">Usuarios habilitados</h2>
-            </div>
-            <span id="user-count" class="count"></span>
-          </div>
-          <div id="user-list" class="card-grid"></div>
-        </section>
-
-        <section aria-labelledby="assignments-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">POLÍTICA</p>
-              <h2 id="assignments-title">Asignaciones de acceso</h2>
-            </div>
-          </div>
-          <div id="assignment-list" class="assignments"></div>
-        </section>
-
-        <section class="tester" aria-labelledby="tester-title">
-          <div>
-            <p class="eyebrow">COMPROBACIÓN</p>
-            <h2 id="tester-title">Probar acceso</h2>
-            <p>Envía <code>tools/list</code> al MCP seleccionado con la identidad de desarrollo elegida.</p>
-          </div>
-          <form id="access-tester">
-            <label>Usuario <select id="test-user" name="user"></select></label>
-            <label>MCP <select id="test-mcp" name="mcp"></select></label>
-            <button type="submit">Listar tools</button>
-          </form>
-          <pre id="test-result" aria-live="polite">Elegí un usuario y un MCP para probar la política.</pre>
-        </section>
-      </div>
-    </main>
-    <script type="module" src="/app.js"></script>
-  </body>
-</html>
+<!doctype html><html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><title>CRIA MCP Gateway · Admin</title><link rel="stylesheet" href="/styles.css"/></head><body><main class="shell">
+<header class="hero"><p class="eyebrow">CRIA MCP GATEWAY</p><h1>Administración de acceso</h1><p class="lede">Definí qué usuario puede conectarse a cada MCP e inspeccioná lo que recibe el gateway.</p></header>
+<section class="notice"><strong>MVP seguro por clave:</strong> ingresá la <code>ADMIN_API_KEY</code> configurada en Netlify. La clave se conserva únicamente durante esta pestaña y no queda incluida en la web.</section>
+<form id="login-form" class="login"><label>Clave de administración <input id="admin-key" type="password" required autocomplete="current-password"/></label><button>Entrar al admin</button></form>
+<p id="message" class="error" role="alert" hidden></p>
+<div id="dashboard" hidden>
+  <section class="two-columns" aria-label="Crear configuración">
+    <form id="user-form" class="panel"><div><p class="eyebrow">USUARIOS</p><h2 id="user-form-title">Nuevo usuario</h2></div><label>ID <input name="id" required pattern="[a-z0-9][a-z0-9-_]*" placeholder="ana"/></label><label>Nombre <input name="name" required placeholder="Ana"/></label><label class="check"><input name="enabled" type="checkbox" checked/> Habilitado</label><div><button>Guardar usuario</button><button class="secondary" id="cancel-user" type="button" hidden>Cancelar</button></div></form>
+    <form id="server-form" class="panel"><div><p class="eyebrow">MCP SERVERS</p><h2 id="server-form-title">Nuevo MCP</h2></div><label>ID <input name="id" required pattern="[a-z0-9][a-z0-9-_]*" placeholder="mi-mcp"/></label><label>Nombre <input name="name" required placeholder="Mi MCP"/></label><label>Descripción <input name="description" required/></label><label>Tipo <select name="kind"><option value="remote">Remoto HTTPS</option><option value="demo">Demo local</option></select></label><label id="endpoint-field">Endpoint HTTPS <input name="endpoint" type="url" placeholder="https://mcp.example.com/mcp"/></label><div><button>Guardar MCP</button><button class="secondary" id="cancel-server" type="button" hidden>Cancelar</button></div></form>
+  </section>
+  <section class="panel" aria-labelledby="access-title"><div><p class="eyebrow">POLÍTICA</p><h2 id="access-title">Asignar acceso</h2></div><form id="access-form"><label>Usuario <select name="userId"></select></label><label>MCP <select name="mcpServerId"></select></label><button>Habilitar acceso</button><button class="secondary" type="submit" name="granted" value="false">Revocar acceso</button></form></section>
+  <section aria-labelledby="users-title"><div class="section-heading"><div><p class="eyebrow">IDENTIDAD</p><h2 id="users-title">Usuarios</h2></div><span id="user-count" class="count"></span></div><div id="user-list" class="card-grid"></div></section>
+  <section aria-labelledby="mcps-title"><div class="section-heading"><div><p class="eyebrow">REGISTRO</p><h2 id="mcps-title">MCPs registrados</h2></div><span id="mcp-count" class="count"></span></div><div id="mcp-list" class="card-grid"></div></section>
+  <section aria-labelledby="assignments-title"><div class="section-heading"><div><p class="eyebrow">POLÍTICA ACTIVA</p><h2 id="assignments-title">Asignaciones</h2></div></div><div id="assignment-list" class="assignments"></div></section>
+  <section class="tester" aria-labelledby="tester-title"><div><p class="eyebrow">PRUEBA LOCAL</p><h2 id="tester-title">Probar política</h2><p>Envía <code>tools/list</code> con la identidad elegida.</p></div><form id="access-tester"><label>Usuario <select name="userId"></select></label><label>MCP <select name="mcpServerId"></select></label><button>Listar tools</button></form><pre id="test-result" aria-live="polite">Esperando una prueba.</pre></section>
+  <section aria-labelledby="logs-title"><div class="section-heading"><div><p class="eyebrow">OBSERVABILIDAD</p><h2 id="logs-title">Lo que llegó al gateway</h2></div><button class="secondary" id="refresh-logs">Actualizar logs</button></div><p class="muted">Headers y campos sensibles aparecen redactados. Los eventos más recientes se muestran primero.</p><div id="log-list" class="logs"></div></section>
+</div></main><script type="module" src="/app.js"></script></body></html>

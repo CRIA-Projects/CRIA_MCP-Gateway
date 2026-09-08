@@ -2,7 +2,7 @@
 
 MVP de gateway MCP remoto, stateless y modular. Recibe llamadas MCP por HTTP, identifica al cliente, valida su acceso al MCP solicitado, resuelve la herramienta registrada, la enruta al adaptador correspondiente y registra la decisión.
 
-Incluye un panel local de consulta en `/` con los MCPs registrados, usuarios habilitados y sus asignaciones. La configuración es deliberadamente estática durante esta fase; Supabase reemplazará esos adaptadores sin cambiar el core.
+Incluye un panel administrativo en `/` para gestionar MCPs, usuarios y asignaciones, junto con un inspector de requests que muestra qué recibe el gateway. En Netlify los datos y los últimos eventos se guardan persistentemente con Netlify Blobs.
 
 ## Ejecutar localmente
 
@@ -25,7 +25,7 @@ curl -X POST http://localhost:8787/mcp/demo \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-Abrí `http://localhost:8787/` para ver el panel y probar la misma política desde el navegador. La configuración de desarrollo está en `src/access/configuration.ts`:
+Abrí `http://localhost:8787/` e ingresá `development-admin-key` para usar el panel local. La configuración inicial de desarrollo está en `src/access/configuration.ts`:
 
 - usuarios: `local-development-client`, `ana`, `bruno` e `invitado`;
 - MCPs: `demo` y `analysis`;
@@ -33,9 +33,20 @@ Abrí `http://localhost:8787/` para ver el panel y probar la misma política des
 
 El endpoint heredado `/mcp` se mantiene como alias de `/mcp/demo`. Un MCP desconocido responde `404`; una identidad deshabilitada o sin asignación recibe el error JSON-RPC `MCP access denied`.
 
+## Administración y logs
+
+El panel solicita `ADMIN_API_KEY` y la envía únicamente a los endpoints `/admin/*`; la clave no se empaqueta en los assets estáticos. Desde el panel se puede:
+
+- crear, editar, habilitar/deshabilitar y eliminar usuarios;
+- crear, editar y eliminar MCPs demo o remotos HTTPS;
+- asignar o revocar acceso usuario→MCP;
+- inspeccionar los últimos 100 requests MCP, con JSON-RPC, parámetros, headers seguros, resultado y timestamp.
+
+Los valores de `Authorization`, cookies, tokens, claves y secretos se redactan en el log. Los argumentos de tools pueden contener datos de usuario: el inspector debe estar restringido al administrador.
+
 ## Seguridad y siguiente etapa
 
-`x-client-id` y el endpoint `/admin/config` son exclusivamente mecanismos de desarrollo: no son una autenticación ni un panel administrativo seguro. No los expongas públicamente. La siguiente integración debe reemplazar `StaticAccessConfiguration` por un repositorio Supabase y `LocalIdentityResolver` por validación de JWT de Supabase Auth. Después podrá añadirse CRUD de MCPs, usuarios y asignaciones al panel.
+`x-client-id` sigue siendo exclusivamente un mecanismo de desarrollo y no identifica de manera segura al usuario MCP. El panel usa una clave compartida como límite mínimo de MVP; para producción pública, reemplazalo por Supabase Auth, roles de administrador y JWT validados en `LocalIdentityResolver`. El forwarding remoto actual cubre JSON-RPC por POST; Streamable HTTP con sesiones/SSE es una extensión posterior.
 
 ## Scripts
 
@@ -48,6 +59,6 @@ npm run check   # chequeo de tipos
 
 ## Despliegue posterior
 
-Netlify publica `public/` como panel estático y sus funciones redirigen `/mcp/{id}`, `/admin/config` y `/health` hacia la misma aplicación. `netlify/functions/mcp.ts` es solamente un adaptador de transporte: la lógica no conoce Netlify. Configurá las variables de `.env.example` como variables del sitio y publicá con el flujo habitual de Netlify.
+Netlify publica `public/` como panel estático y sus funciones redirigen `/mcp/{id}`, `/admin/*` y `/health` hacia la misma aplicación. La función compone adaptadores Netlify Blobs para mantener configuración y logs entre invocaciones y deploys. Antes de desplegar, configurá una `ADMIN_API_KEY` aleatoria en las variables del sitio; nunca uses el valor de desarrollo.
 
 Más contexto en [docs/architecture.md](docs/architecture.md).

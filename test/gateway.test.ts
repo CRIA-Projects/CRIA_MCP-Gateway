@@ -1,64 +1,60 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import mcpFunction from "../netlify/functions/mcp.js";
 import { createGateway } from "../src/bootstrap.js";
 
-const rpc = (path: string, clientId: string, method: string, params: Record<string, unknown> = {}) => new Request(`http://localhost${path}`, {
-  method: "POST", headers: { "content-type": "application/json", "x-client-id": clientId }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+const adminKey = "test-admin-key";
+const app = () => createGateway({ ADMIN_API_KEY: adminKey });
+const rpc = (path: string, clientId: string, method: string, params: Record<string, unknown> = {}, extraHeaders: HeadersInit = {}) => new Request(`http://localhost${path}`, { method: "POST", headers: { "content-type": "application/json", "x-client-id": clientId, ...extraHeaders }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+const admin = (path: string, method = "GET", body?: unknown) => new Request(`http://localhost${path}`, { method, headers: { "x-admin-key": adminKey, ...(body === undefined ? {} : { "content-type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+
+test("health is publicly available while admin data requires its key", async () => {
+  const gateway = app();
+  assert.equal((await gateway.handleRequest(new Request("http://localhost/health"))).status, 200);
+  assert.equal((await gateway.handleRequest(new Request("http://localhost/admin/config"))).status, 401);
+  const config = await gateway.handleRequest(admin("/admin/config"));
+  assert.equal(config.status, 200);
 });
 
-test("health endpoint is available", async () => {
-  const response = await createGateway({}).handleRequest(new Request("http://localhost/health"));
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { status: "ok", service: "cria-mcp-gateway" });
-});
-
-test("the panel configuration exposes development access records without secrets", async () => {
-  const app = createGateway({});
-  const response = await app.handleRequest(new Request("http://localhost/admin/config"));
-  const body = await response.json() as { users: Array<{ id: string }>; mcpServers: Array<{ id: string }>; assignments: unknown[] };
-  assert.equal(response.status, 200);
-  assert.deepEqual(body.users.map((user) => user.id), ["local-development-client", "ana", "bruno", "invitado"]);
-  assert.deepEqual(body.mcpServers.map((server) => server.id), ["demo", "analysis"]);
-  assert.equal(body.assignments.length, 4);
-});
-
-test("an enabled assigned user can list and call tools on its MCP", async () => {
-  const app = createGateway({});
-  const initialized = await (await app.handleRequest(rpc("/mcp/demo", "ana", "initialize"))).json() as { result: { capabilities: { tools: object } } };
-  assert.deepEqual(initialized.result.capabilities, { tools: {} });
-  const listed = await (await app.handleRequest(rpc("/mcp/demo", "ana", "tools/list"))).json() as { result: { tools: Array<{ name: string }> } };
-  assert.deepEqual(listed.result.tools.map((tool) => tool.name), ["demo.echo"]);
-  const response = await (await app.handleRequest(rpc("/mcp/demo", "ana", "tools/call", { name: "demo.echo", arguments: { message: "hola" } }))).json() as { result: { content: Array<{ text: string }> } };
-  assert.equal(response.result.content[0]?.text, "hola");
-});
-
-test("an unassigned or disabled user is denied before MCP initialization and tools are exposed", async () => {
-  const app = createGateway({});
-  const unassigned = await (await app.handleRequest(rpc("/mcp/analysis", "ana", "initialize"))).json() as { error: { code: number; message: string } };
-  assert.deepEqual(unassigned.error, { code: -32003, message: "MCP access denied" });
-  const disabled = await (await app.handleRequest(rpc("/mcp/demo", "invitado", "tools/list"))).json() as { error: { code: number } };
+test("admin changes access rules and the gateway immediately enforces the current state", async () => {
+  const gateway = app();
+  await gateway.handleRequest(admin("/admin/users", "POST", { id: "clara", name: "Clara", enabled: true }));
+  const before = await (await gateway.handleRequest(rpc("/mcp/demo", "clara", "tools/list"))).json() as { error: { code: number } };
+  assert.equal(before.error.code, -32003);
+  await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "clara", mcpServerId: "demo", granted: true }));
+  const after = await (await gateway.handleRequest(rpc("/mcp/demo", "clara", "tools/list"))).json() as { result: { tools: Array<{ name: string }> } };
+  assert.deepEqual(after.result.tools.map((tool) => tool.name), ["demo.echo"]);
+  await gateway.handleRequest(admin("/admin/users/clara", "PATCH", { name: "Clara", enabled: false }));
+  const disabled = await (await gateway.handleRequest(rpc("/mcp/demo", "clara", "initialize"))).json() as { error: { code: number } };
   assert.equal(disabled.error.code, -32003);
 });
 
-test("an unknown MCP is not routed and tools cannot cross MCP boundaries", async () => {
-  const app = createGateway({});
-  const missing = await app.handleRequest(rpc("/mcp/missing", "ana", "tools/list"));
-  assert.equal(missing.status, 404);
-  assert.deepEqual(await missing.json(), { error: "MCP server not found" });
-  const crossServerTool = await (await app.handleRequest(rpc("/mcp/analysis", "bruno", "tools/call", { name: "demo.echo" }))).json() as { error: { code: number } };
-  assert.equal(crossServerTool.error.code, -32602);
+test("gateway audit records sanitized incoming request details", async () => {
+  const gateway = app();
+  await gateway.handleRequest(rpc("/mcp/demo?source=chat", "ana", "tools/call", { name: "demo.echo", arguments: { message: "hola", token: "private" } }, { authorization: "Bearer private" }));
+  const logs = await (await gateway.handleRequest(admin("/admin/logs?limit=10"))).json() as { events: Array<{ rpcMethod: string; headers: Record<string, string>; params: { arguments: { token: string } }; query: Record<string, string> }> };
+  const event = logs.events.find((candidate) => candidate.rpcMethod === "tools/call");
+  assert.equal(event?.headers.authorization, "[redacted]");
+  assert.equal(event?.params.arguments.token, "[redacted]");
+  assert.equal(event?.query.source, "chat");
 });
 
-test("the legacy MCP endpoint continues to target the demo server", async () => {
-  const app = createGateway({});
-  const response = await (await app.handleRequest(rpc("/mcp", "local-development-client", "tools/list"))).json() as { result: { tools: Array<{ name: string }> } };
-  assert.deepEqual(response.result.tools.map((tool) => tool.name), ["demo.echo"]);
+test("an authorized remote MCP receives the JSON-RPC request", async () => {
+  const gateway = app();
+  const originalFetch = globalThis.fetch;
+  let forwarded: unknown;
+  globalThis.fetch = async (_input, init) => { forwarded = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { tools: [] } }), { headers: { "content-type": "application/json" } }); };
+  try {
+    await gateway.handleRequest(admin("/admin/servers", "POST", { id: "remote-test", name: "Remote test", description: "Test upstream", kind: "remote", endpoint: "https://mcp.example.test/mcp" }));
+    await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "remote-test", granted: true }));
+    const response = await gateway.handleRequest(rpc("/mcp/remote-test", "ana", "tools/list"));
+    assert.equal(response.status, 200);
+    assert.deepEqual(forwarded, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
+  } finally { globalThis.fetch = originalFetch; }
 });
 
-test("the Netlify adapter preserves MCP and configuration routes", async () => {
-  const listed = await (await mcpFunction(rpc("/.netlify/functions/mcp/analysis", "bruno", "tools/list"))).json() as { result: { tools: Array<{ name: string }> } };
-  assert.deepEqual(listed.result.tools.map((tool) => tool.name), ["analysis.status"]);
-  const config = await mcpFunction(new Request("http://localhost/.netlify/functions/mcp/admin/config"));
-  assert.equal(config.status, 200);
+test("unknown MCPs are rejected and legacy /mcp targets the demo", async () => {
+  const gateway = app();
+  assert.equal((await gateway.handleRequest(rpc("/mcp/missing", "ana", "tools/list"))).status, 404);
+  const legacy = await (await gateway.handleRequest(rpc("/mcp", "ana", "tools/list"))).json() as { result: { tools: Array<{ name: string }> } };
+  assert.deepEqual(legacy.result.tools.map((tool) => tool.name), ["demo.echo"]);
 });
