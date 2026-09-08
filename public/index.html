@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CRIA MCP Gateway · Accesos</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">CRIA MCP GATEWAY</p>
+        <h1>Accesos a MCPs</h1>
+        <p class="lede">Vista de configuración del entorno de desarrollo. El gateway aplica estas asignaciones en cada llamada.</p>
+      </header>
+
+      <section class="notice" aria-label="Limitación del entorno de desarrollo">
+        <strong>Modo desarrollo:</strong> los usuarios y permisos están definidos en código. El identificador <code>x-client-id</code> no es autenticación segura y será reemplazado por Supabase Auth.
+      </section>
+
+      <p id="load-error" class="error" role="alert" hidden></p>
+
+      <div id="dashboard" hidden>
+        <section aria-labelledby="mcps-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">REGISTRO</p>
+              <h2 id="mcps-title">MCPs registrados</h2>
+            </div>
+            <span id="mcp-count" class="count"></span>
+          </div>
+          <div id="mcp-list" class="card-grid"></div>
+        </section>
+
+        <section aria-labelledby="users-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">IDENTIDAD</p>
+              <h2 id="users-title">Usuarios habilitados</h2>
+            </div>
+            <span id="user-count" class="count"></span>
+          </div>
+          <div id="user-list" class="card-grid"></div>
+        </section>
+
+        <section aria-labelledby="assignments-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">POLÍTICA</p>
+              <h2 id="assignments-title">Asignaciones de acceso</h2>
+            </div>
+          </div>
+          <div id="assignment-list" class="assignments"></div>
+        </section>
+
+        <section class="tester" aria-labelledby="tester-title">
+          <div>
+            <p class="eyebrow">COMPROBACIÓN</p>
+            <h2 id="tester-title">Probar acceso</h2>
+            <p>Envía <code>tools/list</code> al MCP seleccionado con la identidad de desarrollo elegida.</p>
+          </div>
+          <form id="access-tester">
+            <label>Usuario <select id="test-user" name="user"></select></label>
+            <label>MCP <select id="test-mcp" name="mcp"></select></label>
+            <button type="submit">Listar tools</button>
+          </form>
+          <pre id="test-result" aria-live="polite">Elegí un usuario y un MCP para probar la política.</pre>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

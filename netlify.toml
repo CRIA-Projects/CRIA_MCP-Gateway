@@ -1,0 +1,27 @@
+[build]
+  command = "npm run build"
+  functions = "netlify/functions"
+  publish = "public"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/mcp"
+  to = "/.netlify/functions/mcp"
+  status = 200
+
+[[redirects]]
+  from = "/mcp/*"
+  to = "/.netlify/functions/mcp/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/admin/config"
+  to = "/.netlify/functions/mcp/admin/config"
+  status = 200
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/health"
+  status = 200
