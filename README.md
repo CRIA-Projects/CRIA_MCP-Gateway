@@ -1,6 +1,6 @@
 # CRIA MCP Gateway
 
-MVP de gateway MCP remoto, stateless y modular. Recibe llamadas MCP por HTTP, identifica al cliente, valida su acceso al MCP solicitado, resuelve la herramienta registrada, la enruta al adaptador correspondiente y registra la decisión.
+MVP de gateway MCP remoto, stateless y modular. Expone un único servidor MCP público, identifica al cliente, reúne solo las herramientas de los MCPs que tiene habilitados, enruta cada llamada al upstream correspondiente y registra la decisión.
 
 Incluye un panel administrativo en `/` para gestionar MCPs, usuarios y asignaciones, junto con un inspector de requests que muestra qué recibe el gateway. En Netlify los datos y los últimos eventos se guardan persistentemente con Netlify Blobs.
 
@@ -19,7 +19,7 @@ curl http://localhost:8787/health
 
 curl http://localhost:8787/admin/config
 
-curl -X POST http://localhost:8787/mcp/demo \
+curl -X POST http://localhost:8787/mcp \
   -H 'content-type: application/json' \
   -H 'x-client-id: ana' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
@@ -31,7 +31,7 @@ Abrí `http://localhost:8787/` e ingresá `development-admin-key` para usar el p
 - MCPs: `demo` y `analysis`;
 - asignaciones: cada usuario habilitado solo puede acceder a los MCPs que tiene asociados.
 
-El endpoint heredado `/mcp` se mantiene como alias de `/mcp/demo`. Un MCP desconocido responde `404`; una identidad deshabilitada o sin asignación recibe el error JSON-RPC `MCP access denied`.
+La única URL MCP pública es `/mcp`: los IDs de los MCPs registrados son internos y no forman parte de la ruta. El gateway responde `server/discover` para el protocolo `2026-07-28`; en `tools/list` publica herramientas con namespace, por ejemplo `demo__demo.echo`. Una identidad deshabilitada o sin asignación recibe el error JSON-RPC `MCP access denied`.
 
 ## Administración y logs
 
@@ -59,7 +59,7 @@ npm run check   # chequeo de tipos
 
 ## Despliegue posterior
 
-Netlify publica `public/` como panel estático y sus funciones redirigen `/mcp/{id}`, `/admin/*` y `/health` hacia la misma aplicación. La función compone adaptadores Netlify Blobs para mantener configuración y logs entre invocaciones y deploys. Antes de desplegar, configurá una `ADMIN_API_KEY` aleatoria en las variables del sitio; nunca uses el valor de desarrollo.
+Netlify publica `public/` como panel estático y sus funciones redirigen `/mcp`, `/admin/*` y `/health` hacia la misma aplicación. La función compone adaptadores Netlify Blobs para mantener configuración y logs entre invocaciones y deploys. Antes de desplegar, configurá una `ADMIN_API_KEY` aleatoria en las variables del sitio; nunca uses el valor de desarrollo.
 
 Seguí el [checklist de deploy en Netlify](docs/netlify-deploy.md), que incluye la prueba desde ChatGPT y el límite explícito del principal de prueba hasta incorporar OAuth/Supabase Auth.
 

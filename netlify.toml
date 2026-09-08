@@ -12,11 +12,6 @@
   status = 200
 
 [[redirects]]
-  from = "/mcp/*"
-  to = "/.netlify/functions/mcp/:splat"
-  status = 200
-
-[[redirects]]
   from = "/admin/*"
   to = "/.netlify/functions/mcp/admin/:splat"
   status = 200

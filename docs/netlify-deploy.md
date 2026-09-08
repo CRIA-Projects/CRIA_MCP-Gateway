@@ -26,12 +26,14 @@ Después de publicar, abrí la URL de Netlify y escribí tu `ADMIN_API_KEY`.
 
 1. Creá un usuario y un MCP remoto HTTPS, o usá `demo` para validar el recorrido.
 2. Asigná el usuario al MCP.
-3. Usá el bloque **Probar política** o enviá una llamada JSON-RPC a `https://TU-SITIO.netlify.app/mcp/demo`.
+3. Usá el bloque **Probar gateway público** o enviá una llamada JSON-RPC a `https://TU-SITIO.netlify.app/mcp`.
 4. Abrí **Lo que llegó al gateway** para ver método, parámetros, headers seguros, usuario resuelto, MCP y resultado. Tokens, cookies y secretos se muestran como `[redacted]`.
+
+`/mcp` es la única URL que se configura en el cliente MCP. Los IDs creados en el panel son internos: el gateway solo lista las herramientas de los MCPs asignados al usuario y las expone con namespace, por ejemplo `demo__demo.echo`.
 
 ## 4. Probar desde ChatGPT
 
-Para observar primero el tráfico, configurá el endpoint remoto como `https://TU-SITIO.netlify.app/mcp`. Las llamadas sin identidad propia se resuelven con `MCP_GATEWAY_TRUSTED_CLIENT_ID` y quedan visibles en el inspector de logs.
+Para observar primero el tráfico, configurá el endpoint remoto como `https://TU-SITIO.netlify.app/mcp`. El gateway implementa `server/discover` para la versión MCP `2026-07-28`. Las llamadas sin identidad propia se resuelven con `MCP_GATEWAY_TRUSTED_CLIENT_ID` y quedan visibles en el inspector de logs.
 
 Esto es una prueba de transporte, no identidad individual: todos los clientes sin OAuth comparten ese principal de prueba. ChatGPT usa OAuth cuando una app necesita autenticar usuarios individualmente. Antes de dar acceso a usuarios reales, reemplazá `LocalIdentityResolver` por validación OAuth/Supabase Auth y no dejes ningún usuario de prueba asignado.
 

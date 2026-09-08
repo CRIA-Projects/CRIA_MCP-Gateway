@@ -36,10 +36,10 @@ Esto permite que un adaptador PostgreSQL, un validador JWT, o un cliente Streama
 
 ## Flujo MVP
 
-1. El adaptador HTTP entrega un `Request` dirigido a `/mcp/{mcp-id}` a `GatewayApplication`.
-2. Core valida que el MCP exista y admite `initialize`, `tools/list` y `tools/call`.
-3. Identity produce el principal y Policy verifica que esté habilitado y asignado al MCP solicitado.
-4. Registry devuelve solo las herramientas de ese MCP; Router ejecuta mediante su adaptador.
+1. El adaptador HTTP entrega un `Request` dirigido a la única URL pública `/mcp` a `GatewayApplication`.
+2. Core admite `server/discover` (MCP `2026-07-28`), `tools/list`, `tools/call` y conserva `initialize` para clientes previos.
+3. Identity produce el principal y Policy obtiene exclusivamente sus MCPs habilitados y asignados.
+4. Registry y Router federan esos MCPs: `tools/list` publica nombres con namespace `<mcp-interno>__<tool>` y `tools/call` envía la llamada al upstream correcto. Los IDs de MCP nunca se exponen en la URL pública.
 5. Audit guarda decisiones de listado y llamada, aun las denegadas.
 6. El panel estático usa `/admin/*` protegido por `ADMIN_API_KEY` para gestionar reglas y consultar eventos; la misma configuración se aplica a la siguiente llamada MCP.
 

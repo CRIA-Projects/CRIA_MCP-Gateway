@@ -8,7 +8,7 @@ import { failure, success, type JsonRpcRequest, type JsonRpcResponse } from "./p
 
 export interface GatewayDependencies { identity: IdentityResolver; policy: PolicyService; registry: ToolRegistry; router: ToolRouter; audit: AuditLog; access: AccessConfiguration; adminApiKey: string; }
 type Decision = "allowed" | "denied" | "error";
-interface Outcome { response: Response; decision: Decision; clientId?: string; errorCode?: number; }
+interface Outcome { response: Response; decision: Decision; clientId?: string; mcpServerId?: string; errorCode?: number; }
 
 export class GatewayApplication {
   constructor(private readonly deps: GatewayDependencies) {}
@@ -17,46 +17,75 @@ export class GatewayApplication {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") return Response.json({ status: "ok", service: "cria-mcp-gateway" });
     if (url.pathname.startsWith("/admin/")) return this.handleAdmin(request, url);
-    const mcpServerId = this.mcpServerId(url.pathname);
-    if (request.method !== "POST" || !mcpServerId) return Response.json({ error: "Not found" }, { status: 404 });
-    const server = await this.deps.access.findMcpServer(mcpServerId);
-    if (!server) return this.auditAndReturn(request, undefined, mcpServerId, undefined, { response: Response.json({ error: "MCP server not found" }, { status: 404 }), decision: "denied" });
+    if (request.method !== "POST" || url.pathname !== "/mcp") return Response.json({ error: "Not found" }, { status: 404 });
     let message: unknown;
-    try { message = await request.json(); } catch { return this.auditAndReturn(request, undefined, mcpServerId, undefined, this.rpcOutcome(failure(null, -32700, "Parse error"), "error")); }
-    if (!isRequest(message)) return this.auditAndReturn(request, undefined, mcpServerId, message, this.rpcOutcome(failure(null, -32600, "Invalid Request"), "error"));
-    const outcome = await this.dispatch(request, server, message);
+    try { message = await request.json(); } catch { return this.auditAndReturn(request, undefined, undefined, undefined, this.rpcOutcome(failure(null, -32700, "Parse error"), "error")); }
+    if (!isRequest(message)) return this.auditAndReturn(request, undefined, undefined, message, this.rpcOutcome(failure(null, -32600, "Invalid Request"), "error"));
+    const outcome = await this.dispatch(request, message);
     const response = message.id === undefined ? new Response(null, { status: 202 }) : outcome.response;
-    return this.auditAndReturn(request, outcome.clientId, mcpServerId, message, { ...outcome, response });
+    return this.auditAndReturn(request, outcome.clientId, outcome.mcpServerId, message, { ...outcome, response });
   }
 
-  private async dispatch(request: Request, server: McpServer, message: JsonRpcRequest): Promise<Outcome> {
+  private async dispatch(request: Request, message: JsonRpcRequest): Promise<Outcome> {
     const id = message.id ?? null;
     const principal = await this.deps.identity.resolve(request);
-    if (!(await this.deps.policy.canUseMcp(principal, server.id))) return this.rpcOutcome(failure(id, -32003, "MCP access denied"), "denied", principal.id);
-    if (server.kind === "remote") {
-      try {
-        const forwarded = await this.deps.router.forward(server, message, request.headers);
-        return { response: new Response(forwarded.body, { status: forwarded.status, headers: { "content-type": forwarded.contentType, "cache-control": "no-store" } }), decision: "allowed", clientId: principal.id };
-      } catch {
-        return this.rpcOutcome(failure(id, -32603, "Upstream MCP request failed"), "error", principal.id);
-      }
-    }
-    if (message.method === "initialize") return this.rpcOutcome(success(id, { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "cria-mcp-gateway", version: "0.2.0" } }), "allowed", principal.id);
-    if (message.method === "tools/list") return this.rpcOutcome(success(id, { tools: (await this.deps.registry.list(server.id)).map(toMcpTool) }), "allowed", principal.id);
-    if (message.method === "tools/call") return this.callTool(principal, id, server.id, message.params);
+    const servers = await this.accessibleServers(principal);
+    if (!servers.length) return this.rpcOutcome(failure(id, -32003, "MCP access denied"), "denied", principal.id);
+    if (message.method === "server/discover") return { ...this.rpcOutcome(success(id, discoveryResult()), "allowed", principal.id), mcpServerId: "gateway" };
+    if (message.method === "initialize") return { ...this.rpcOutcome(success(id, legacyInitializeResult()), "allowed", principal.id), mcpServerId: "gateway" };
+    if (message.method === "tools/list") return this.listTools(principal, servers, message, request.headers);
+    if (message.method === "tools/call") return this.callTool(principal, id, servers, message, request.headers);
     return this.rpcOutcome(failure(id, -32601, "Method not found"), "error", principal.id);
   }
 
-  private async callTool(principal: Principal, id: JsonRpcRequest["id"], mcpServerId: string, params: Record<string, unknown> | undefined): Promise<Outcome> {
-    const toolName = typeof params?.name === "string" ? params.name : undefined;
+  private async accessibleServers(principal: Principal): Promise<readonly McpServer[]> {
+    const user = await this.deps.access.findUser(principal.id);
+    if (!user?.enabled) return [];
+    const assigned = await this.deps.access.listAccessibleMcpServers(principal.id);
+    return (await Promise.all(assigned.map(async (server) => (await this.deps.policy.canUseMcp(principal, server.id)) ? server : undefined))).filter((server): server is McpServer => Boolean(server));
+  }
+
+  private async listTools(principal: Principal, servers: readonly McpServer[], message: JsonRpcRequest, headers: Headers): Promise<Outcome> {
+    const toolGroups = await Promise.all(servers.map(async (server) => {
+      try {
+        const tools = server.kind === "remote"
+          ? await this.remoteTools(server, message, headers)
+          : (await this.deps.registry.list(server.id)).map(toMcpTool);
+        return tools.map((tool) => toGatewayTool(server, tool));
+      } catch { return []; }
+    }));
+    return { ...this.rpcOutcome(success(message.id ?? null, { resultType: "complete", tools: toolGroups.flat(), ttlMs: 300_000, cacheScope: "private" }), "allowed", principal.id), mcpServerId: "gateway" };
+  }
+
+  private async remoteTools(server: McpServer, message: JsonRpcRequest, headers: Headers): Promise<GatewayTool[]> {
+    const response = await this.deps.router.forward(server, message, headers);
+    if (response.status < 200 || response.status >= 300) throw new Error("Upstream MCP returned an error");
+    const payload: unknown = JSON.parse(response.body);
+    const result = payload && typeof payload === "object" ? (payload as { result?: unknown }).result : undefined;
+    const tools = result && typeof result === "object" ? (result as { tools?: unknown }).tools : undefined;
+    if (!Array.isArray(tools)) throw new Error("Upstream MCP tools/list response is invalid");
+    return tools.filter(isGatewayTool);
+  }
+
+  private async callTool(principal: Principal, id: JsonRpcRequest["id"], servers: readonly McpServer[], message: JsonRpcRequest, headers: Headers): Promise<Outcome> {
+    const toolName = typeof message.params?.name === "string" ? message.params.name : undefined;
     if (!toolName) return this.rpcOutcome(failure(id ?? null, -32602, "tools/call requires a string params.name"), "error", principal.id);
-    const tool = await this.deps.registry.find(mcpServerId, toolName);
-    if (!tool) return this.rpcOutcome(failure(id ?? null, -32602, "Unknown tool"), "error", principal.id);
+    const target = findToolTarget(servers, toolName);
+    if (!target) return this.rpcOutcome(failure(id ?? null, -32602, "Unknown tool. Use the names returned by tools/list."), "error", principal.id);
+    const { server, upstreamToolName } = target;
+    if (server.kind === "remote") {
+      try {
+        const forwarded = await this.deps.router.forward(server, { ...message, params: { ...message.params, name: upstreamToolName } }, headers);
+        return { response: new Response(forwarded.body, { status: forwarded.status, headers: { "content-type": forwarded.contentType, "cache-control": "no-store" } }), decision: "allowed", clientId: principal.id, mcpServerId: server.id };
+      } catch { return { ...this.rpcOutcome(failure(id ?? null, -32603, "Upstream MCP request failed"), "error", principal.id), mcpServerId: server.id }; }
+    }
+    const tool = await this.deps.registry.find(server.id, upstreamToolName);
+    if (!tool) return { ...this.rpcOutcome(failure(id ?? null, -32602, "Unknown tool"), "error", principal.id), mcpServerId: server.id };
     try {
-      const rawArgs = params?.arguments;
+      const rawArgs = message.params?.arguments;
       const args = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs) ? rawArgs as Record<string, unknown> : {};
-      return this.rpcOutcome(success(id ?? null, await this.deps.router.call(tool, args)), "allowed", principal.id);
-    } catch { return this.rpcOutcome(failure(id ?? null, -32603, "Tool execution failed"), "error", principal.id); }
+      return { ...this.rpcOutcome(success(id ?? null, await this.deps.router.call(tool, args)), "allowed", principal.id), mcpServerId: server.id };
+    } catch { return { ...this.rpcOutcome(failure(id ?? null, -32603, "Tool execution failed"), "error", principal.id), mcpServerId: server.id }; }
   }
 
   private rpcOutcome(body: JsonRpcResponse, decision: Decision, clientId?: string): Outcome {
@@ -92,7 +121,6 @@ export class GatewayApplication {
   private adminJson(body: unknown, status = 200) { return Response.json(body, { status, headers: { "cache-control": "no-store" } }); }
   private deleteResult(deleted: boolean) { return deleted ? new Response(null, { status: 204 }) : Response.json({ error: "Not found" }, { status: 404 }); }
   private json(body: JsonRpcResponse) { return Response.json(body, { headers: { "cache-control": "no-store" } }); }
-  private mcpServerId(pathname: string) { if (pathname === "/mcp") return "demo"; const match = /^\/mcp\/([^/]+)$/.exec(pathname); return match ? decodeURIComponent(match[1]) : undefined; }
 }
 
 async function objectBody(request: Request) { const body: unknown = await request.json(); if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Expected a JSON object"); return body as Record<string, unknown>; }
@@ -104,7 +132,16 @@ function serverFields(body: Record<string, unknown>): Omit<McpServer, "id"> { co
 function stringField(body: Record<string, unknown>, name: string) { const value = body[name]; if (typeof value !== "string" || !value.trim()) throw new Error(`${name} must be a non-empty string`); return value.trim(); }
 function awaitRequired<T>(value: Promise<T | undefined>) { return value.then((result) => { if (!result) throw new Error("Not found"); return result; }); }
 function isRequest(value: unknown): value is JsonRpcRequest { return Boolean(value && typeof value === "object" && (value as Record<string, unknown>).jsonrpc === "2.0" && typeof (value as Record<string, unknown>).method === "string"); }
-function toMcpTool(tool: { name: string; description: string; inputSchema: Record<string, unknown> }) { return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema }; }
+interface GatewayTool { name: string; description?: string; inputSchema?: Record<string, unknown>; [key: string]: unknown; }
+function isGatewayTool(value: unknown): value is GatewayTool { return Boolean(value && typeof value === "object" && typeof (value as GatewayTool).name === "string"); }
+function toMcpTool(tool: { name: string; description: string; inputSchema: Record<string, unknown> }): GatewayTool { return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema }; }
+function toGatewayTool(server: McpServer, tool: GatewayTool): GatewayTool { return { ...tool, name: `${server.id}__${tool.name}`, description: tool.description ? `[${server.name}] ${tool.description}` : `Tool from ${server.name}` }; }
+function findToolTarget(servers: readonly McpServer[], gatewayToolName: string) {
+  const server = [...servers].sort((left, right) => right.id.length - left.id.length).find((candidate) => gatewayToolName.startsWith(`${candidate.id}__`));
+  return server ? { server, upstreamToolName: gatewayToolName.slice(server.id.length + 2) } : undefined;
+}
+function discoveryResult() { return { resultType: "complete", supportedVersions: ["2026-07-28"], capabilities: { tools: { listChanged: true } }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "cria-mcp-gateway", version: "0.3.0" } }, ttlMs: 300_000, cacheScope: "private" }; }
+function legacyInitializeResult() { return { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "cria-mcp-gateway", version: "0.3.0" } }; }
 function safeHeaders(headers: Headers) { return Object.fromEntries([...headers].map(([key, value]) => [key, /authorization|cookie|token|secret|api[-_]?key/i.test(key) ? "[redacted]" : truncate(value)])); }
 function sanitize(value: unknown): unknown { if (typeof value === "string") return truncate(value); if (Array.isArray(value)) return value.map(sanitize); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, /password|token|secret|authorization|api[-_]?key/i.test(key) ? "[redacted]" : sanitize(item)])); return value; }
 function truncate(value: string) { return value.length > 2000 ? `${value.slice(0, 2000)}…[truncated]` : value; }

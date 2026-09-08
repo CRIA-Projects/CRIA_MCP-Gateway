@@ -7,6 +7,7 @@ export interface PublicGatewayConfiguration { users: readonly GatewayUser[]; mcp
 export interface AccessConfiguration {
   findUser(id: string): Promise<GatewayUser | undefined>;
   findMcpServer(id: string): Promise<McpServer | undefined>;
+  listAccessibleMcpServers(userId: string): Promise<readonly McpServer[]>;
   hasAccess(userId: string, mcpServerId: string): Promise<boolean>;
   publicView(): Promise<PublicGatewayConfiguration>;
   createUser(input: GatewayUser): Promise<GatewayUser>;
@@ -31,6 +32,11 @@ export class PersistentAccessConfiguration implements AccessConfiguration {
   constructor(private readonly storage: AccessStateStorage, private readonly seed: PublicGatewayConfiguration) {}
   async findUser(id: string) { return (await this.state()).users.find((user) => user.id === id); }
   async findMcpServer(id: string) { return (await this.state()).mcpServers.find((server) => server.id === id); }
+  async listAccessibleMcpServers(userId: string) {
+    const state = await this.state();
+    const allowedIds = new Set(state.assignments.filter((assignment) => assignment.userId === userId).map((assignment) => assignment.mcpServerId));
+    return state.mcpServers.filter((server) => allowedIds.has(server.id));
+  }
   async hasAccess(userId: string, mcpServerId: string) { return (await this.state()).assignments.some((assignment) => assignment.userId === userId && assignment.mcpServerId === mcpServerId); }
   async publicView() { return this.state(); }
   async createUser(input: GatewayUser) { validateUser(input); return this.mutate((state) => { if (state.users.some((user) => user.id === input.id)) throw new Error("A user with this ID already exists"); state.users.push(copy(input)); return input; }); }
