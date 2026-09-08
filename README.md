@@ -61,4 +61,6 @@ npm run check   # chequeo de tipos
 
 Netlify publica `public/` como panel estático y sus funciones redirigen `/mcp/{id}`, `/admin/*` y `/health` hacia la misma aplicación. La función compone adaptadores Netlify Blobs para mantener configuración y logs entre invocaciones y deploys. Antes de desplegar, configurá una `ADMIN_API_KEY` aleatoria en las variables del sitio; nunca uses el valor de desarrollo.
 
+Seguí el [checklist de deploy en Netlify](docs/netlify-deploy.md), que incluye la prueba desde ChatGPT y el límite explícito del principal de prueba hasta incorporar OAuth/Supabase Auth.
+
 Más contexto en [docs/architecture.md](docs/architecture.md).
