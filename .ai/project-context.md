@@ -65,13 +65,13 @@
 
 ## [context.data]
 
-- Databases (type + name): Netlify Blobs stores `cria-mcp-access` and `cria-mcp-audit` in deployment; local development uses in-memory adapters.
-- ORM / query layer: none.
-- Migration strategy: none.
-- Key models / entities: `Principal`, `ToolDefinition`, `AuditEvent`, JSON-RPC request/response.
+- Databases (type + name): optional Supabase Postgres (`cria_gateway_access_state`, `cria_gateway_audit_events`, prefixed to coexist with other projects' tables in the same instance), used when `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are set; otherwise falls back to Netlify Blobs (`cria-mcp-access`, `cria-mcp-audit`) in deployment or in-memory adapters locally. Selection happens in `src/bootstrap.ts`.
+- ORM / query layer: none; `@supabase/supabase-js` client used directly with the `service_role` key server-side only.
+- Migration strategy: hand-written idempotent SQL under `supabase/migrations/`, applied manually via the Supabase SQL Editor (no CLI/automation yet).
+- Key models / entities: `Principal`, `ToolDefinition`, `AuditEvent`, JSON-RPC request/response. Supabase/Blob adapters both store the same `PublicGatewayConfiguration` / `AuditEvent[]` JSON shape as a single row (`AccessStateStorage`/`AuditStorage` ports), not normalized tables.
 - Caching layer: none.
 - Data validation approach: narrow runtime validation of the JSON-RPC envelope and `tools/call.params.name`; tool argument-schema validation is not implemented.
-- Backup / retention policy: audit is a Netlify Blob ring buffer of the latest 200 events in deployment; external backup/retention remains NEEDS CLARIFICATION.
+- Backup / retention policy: audit is a ring buffer of the latest 200 events (Netlify Blob or Supabase row); external backup/retention remains NEEDS CLARIFICATION. Supabase tables have RLS enabled with no policies, so only `service_role` can read/write.
 
 ## [context.testing]
 
@@ -88,6 +88,6 @@
 - Deployment method: `netlify.toml` builds with `npm run build`, publishes `public/`, packages `netlify/functions`, and redirects `/mcp`, `/admin/*`, and `/health`.
 - CI/CD platform: NEEDS CLARIFICATION; none found in the repository.
 - Environment names (dev / staging / prod): local development is documented; staging/production are NEEDS CLARIFICATION.
-- Secrets management: `ADMIN_API_KEY` is required in Netlify to enable the admin; `MCP_GATEWAY_TRUSTED_CLIENT_ID` is a local default identity only. Neither is bundled into static assets.
+- Secrets management: `ADMIN_API_KEY` is required in Netlify to enable the admin; `MCP_GATEWAY_TRUSTED_CLIENT_ID` is a local default identity only. `SUPABASE_SERVICE_ROLE_KEY` (optional, enables Supabase persistence) is a server-only secret. None of these are bundled into static assets.
 - Monitoring / alerting: startup stdout and in-memory audit only; NEEDS CLARIFICATION.
 - Rollback procedure: Netlify deployment rollback process is not documented. NEEDS CLARIFICATION.

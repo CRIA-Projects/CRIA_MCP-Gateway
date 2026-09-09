@@ -57,9 +57,22 @@ npm test        # pruebas del flujo esencial
 npm run check   # chequeo de tipos
 ```
 
+## Persistencia con Supabase
+
+Por defecto, la configuración de acceso y el log de auditoría se guardan en memoria (local) o en Netlify Blobs (deploy). Para usar en su lugar un proyecto Supabase existente (aunque ya tenga tablas de otras apps):
+
+1. Corré `supabase/migrations/0001_cria_gateway_persistence.sql` en el **SQL Editor** de tu proyecto Supabase. Crea dos tablas prefijadas `cria_gateway_access_state` y `cria_gateway_audit_events` con RLS habilitado y sin políticas públicas, así conviven sin tocar las tablas de otros proyectos ni quedar expuestas por `anon`/`authenticated`.
+2. Completá en `.env` (local) y en las variables de entorno del sitio (Netlify, para producción):
+   ```
+   SUPABASE_URL=https://tu-proyecto.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=...
+   ```
+   `SUPABASE_SERVICE_ROLE_KEY` es la clave `service_role` del proyecto (Project Settings → API). Es secreta: no la commitees ni la expongas en el bundle del panel.
+3. Con ambas variables presentes, `src/bootstrap.ts` usa automáticamente los adaptadores Supabase (`src/access/supabase.ts`, `src/audit/supabase.ts`) tanto en `npm run dev` como en Netlify; sin ellas, el comportamiento actual (memoria / Netlify Blobs) no cambia.
+
 ## Despliegue posterior
 
-Netlify publica `public/` como panel estático y sus funciones redirigen `/mcp`, `/admin/*` y `/health` hacia la misma aplicación. La función compone adaptadores Netlify Blobs para mantener configuración y logs entre invocaciones y deploys. Antes de desplegar, configurá una `ADMIN_API_KEY` aleatoria en las variables del sitio; nunca uses el valor de desarrollo.
+Netlify publica `public/` como panel estático y sus funciones redirigen `/mcp`, `/admin/*` y `/health` hacia la misma aplicación. La función compone adaptadores Netlify Blobs (o Supabase, ver arriba) para mantener configuración y logs entre invocaciones y deploys. Antes de desplegar, configurá una `ADMIN_API_KEY` aleatoria en las variables del sitio; nunca uses el valor de desarrollo.
 
 Seguí el [checklist de deploy en Netlify](docs/netlify-deploy.md), que incluye la prueba desde ChatGPT y el límite explícito del principal de prueba hasta incorporar OAuth/Supabase Auth.
 
