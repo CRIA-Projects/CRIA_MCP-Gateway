@@ -76,6 +76,28 @@ test("an authorized remote MCP is listed and called through the public gateway",
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test("a remote MCP with a configured authorization header sends it upstream", async () => {
+  const gateway = app();
+  const originalFetch = globalThis.fetch;
+  const forwardedHeaders: Headers[] = [];
+  globalThis.fetch = async (_input, init) => {
+    forwardedHeaders.push(new Headers(init?.headers));
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { tools: [] } }), { headers: { "content-type": "application/json" } });
+  };
+  try {
+    await gateway.handleRequest(admin("/admin/servers", "POST", { id: "auth-test", name: "Auth test", description: "Test upstream with auth", kind: "remote", endpoint: "https://mcp.example.test/mcp", authorizationHeader: "Bearer sk-secret" }));
+    await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "auth-test", granted: true }));
+    await gateway.handleRequest(rpc("/mcp", "ana", "tools/list"));
+    assert.equal(forwardedHeaders[0].get("authorization"), "Bearer sk-secret");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("a demo MCP server rejects an authorization header", async () => {
+  const gateway = app();
+  const response = await gateway.handleRequest(admin("/admin/servers", "POST", { id: "bad-demo", name: "Bad demo", description: "Should fail", kind: "demo", authorizationHeader: "Bearer sk-secret" }));
+  assert.equal(response.status, 400);
+});
+
 test("internal MCP IDs are not public paths", async () => {
   const gateway = app();
   assert.equal((await gateway.handleRequest(rpc("/mcp/missing", "ana", "tools/list"))).status, 404);
