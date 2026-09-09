@@ -57,9 +57,9 @@
 - Framework + version: dependency-free static HTML/CSS/JavaScript admin panel in `public/`.
 - State management: admin API key is held in session storage; current configuration is fetched after each mutation.
 - Routing: `/` serves the panel; `/mcp`, `/admin/*`, and `/health` are handled by the application; `netlify.toml` redirects dynamic endpoints to functions in deployment. MCP IDs are administrative/internal only.
-- Design system / component library: not applicable.
+- Design system / component library: CRIA dark B2B visual system implemented in native CSS: Montserrat for UI, DM Serif Display for the hero, near-black layered surfaces, blue information accents, and magenta primary CTAs.
 - API communication layer: browser Fetch sends user-entered `ADMIN_API_KEY` only to `/admin/*`; the development tester uses `x-client-id` only for local policy verification.
-- Styling conventions: native CSS; dark responsive layout, semantic sections, labeled form controls, and live response feedback.
+- Styling conventions: native responsive CSS with CRIA design tokens; semantic sections, labeled form controls, visible focus states, reduced-motion handling, and live response feedback.
 - i18n / accessibility requirements: Spanish UI; native semantic HTML, labels, and `aria-live` / alert feedback.
 - Build tooling: static assets need no build; TypeScript compiler builds the gateway.
 
