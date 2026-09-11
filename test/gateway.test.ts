@@ -98,6 +98,28 @@ test("a demo MCP server rejects an authorization header", async () => {
   assert.equal(response.status, 400);
 });
 
+test("admin analytics summarize activity per user and per MCP from the audit log", async () => {
+  const gateway = app();
+  await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "demo", granted: true }));
+  await gateway.handleRequest(rpc("/mcp", "ana", "tools/call", { name: "demo__demo.echo", arguments: { message: "hola" } }));
+  await gateway.handleRequest(rpc("/mcp", "ana", "tools/call", { name: "demo__demo.echo", arguments: { message: "hola" } }));
+  await gateway.handleRequest(rpc("/mcp", "invitado", "tools/list"));
+  const analytics = await (await gateway.handleRequest(admin("/admin/analytics"))).json() as {
+    sampleSize: number;
+    users: Array<{ userId: string; totalRequests: number; allowed: number; denied: number; topMcpServerId?: string }>;
+    mcpServers: Array<{ mcpServerId: string; totalCalls: number; topTool?: string }>;
+  };
+  const ana = analytics.users.find((user) => user.userId === "ana");
+  assert.equal(ana?.totalRequests, 2);
+  assert.equal(ana?.allowed, 2);
+  assert.equal(ana?.topMcpServerId, "demo");
+  const invitado = analytics.users.find((user) => user.userId === "invitado");
+  assert.equal(invitado?.denied, 1);
+  const demo = analytics.mcpServers.find((server) => server.mcpServerId === "demo");
+  assert.equal(demo?.totalCalls, 2);
+  assert.equal(demo?.topTool, "demo__demo.echo");
+});
+
 test("internal MCP IDs are not public paths", async () => {
   const gateway = app();
   assert.equal((await gateway.handleRequest(rpc("/mcp/missing", "ana", "tools/list"))).status, 404);

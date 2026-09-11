@@ -45,7 +45,7 @@
 - Language + runtime: TypeScript 5.8+, Node.js >=22, ESM / NodeNext, strict compiler settings.
 - Framework: native Fetch API application core; Node `http` local adapter; Netlify function adapters.
 - Entry points: `src/platform/http/server.ts` (local server); `netlify/functions/mcp.ts`; `netlify/functions/health.ts`; composition root `src/bootstrap.ts`.
-- Key services / business logic modules: `GatewayApplication` implements `server/discover`, legacy `initialize`, `tools/list`, and `tools/call` as one virtual MCP server. It federates only the assigned upstream MCPs and namespaces listed tools as `<internal-mcp-id>__<tool-name>`; ports are `AccessConfiguration`, `IdentityResolver`, `PolicyService`, `ToolRegistry`, `ToolRouter`, and `AuditLog`.
+- Key services / business logic modules: `GatewayApplication` implements `server/discover`, legacy `initialize`, `tools/list`, and `tools/call` as one virtual MCP server. It federates only the assigned upstream MCPs and namespaces listed tools as `<internal-mcp-id>__<tool-name>`; ports are `AccessConfiguration`, `IdentityResolver`, `PolicyService`, `ToolRegistry`, `ToolRouter`, and `AuditLog`. `GET /admin/analytics` derives per-user/per-MCP activity (`src/audit/analytics.ts::computeAnalytics`) from the audit buffer, not a separate store.
 - Auth strategy: MVP `LocalIdentityResolver` takes `x-client-id` or `MCP_GATEWAY_TRUSTED_CLIENT_ID`; it is explicitly not public-grade authentication. `ConfiguredMcpPolicy` allows only enabled static users assigned to the requested MCP, deny-by-default.
 - External APIs consumed: configured HTTPS remote MCP servers via JSON-RPC POST. The router supports static demo tools and remote forwarding; session-aware Streamable HTTP/SSE is out of scope. A remote `McpServer` may set an optional `authorizationHeader` (e.g. `Bearer <token>`), forwarded as-is on every upstream call — never derived from the calling MCP client's own headers.
 - Error handling conventions: JSON-RPC failures use standard invalid/parse/method codes plus `-32003` for access denied and `-32603` for router failure; unknown HTTP paths return 404; notifications return 202 without a body.
@@ -56,7 +56,7 @@
 
 - Framework + version: dependency-free static HTML/CSS/JavaScript admin panel in `public/`.
 - State management: admin API key is held in session storage; current configuration is fetched after each mutation.
-- Routing: `/` serves the panel; `/mcp`, `/admin/*`, and `/health` are handled by the application; `netlify.toml` redirects dynamic endpoints to functions in deployment. MCP IDs are administrative/internal only.
+- Routing: `/` serves the panel; `/mcp`, `/admin/*`, and `/health` are handled by the application; `netlify.toml` redirects dynamic endpoints to functions in deployment. MCP IDs are administrative/internal only. The dashboard is split into three client-side tabs (Usuarios / MCPs / Logs, toggled via `[hidden]` on `[data-tab-panel]`, no router) instead of one long scrolling page.
 - Design system / component library: CRIA dark B2B visual system implemented in native CSS: Montserrat for UI, DM Serif Display for the hero, near-black layered surfaces, blue information accents, and magenta primary CTAs.
 - API communication layer: browser Fetch sends user-entered `ADMIN_API_KEY` only to `/admin/*`; the development tester uses `x-client-id` only for local policy verification.
 - Styling conventions: native responsive CSS with CRIA design tokens; semantic sections, labeled form controls, visible focus states, reduced-motion handling, and live response feedback.

@@ -1,4 +1,5 @@
 import type { AccessConfiguration, GatewayUser, McpServer } from "../access/configuration.js";
+import { computeAnalytics } from "../audit/analytics.js";
 import type { AuditEvent, AuditLog } from "../audit/audit.js";
 import type { IdentityResolver, Principal } from "../identity/identity.js";
 import type { PolicyService } from "../policy/policy.js";
@@ -105,6 +106,7 @@ export class GatewayApplication {
     try {
       if (request.method === "GET" && url.pathname === "/admin/config") return this.adminJson(await this.deps.access.publicView());
       if (request.method === "GET" && url.pathname === "/admin/logs") return this.adminJson({ events: await this.deps.audit.list(Number(url.searchParams.get("limit") ?? 100)) });
+      if (request.method === "GET" && url.pathname === "/admin/analytics") return this.adminJson(computeAnalytics(await this.deps.audit.list(200), await this.deps.access.publicView()));
       if (request.method === "POST" && url.pathname === "/admin/users") return this.adminJson(await this.deps.access.createUser(await userBody(request)), 201);
       if (request.method === "POST" && url.pathname === "/admin/servers") return this.adminJson(await this.deps.access.createMcpServer(await serverBody(request)), 201);
       if (request.method === "PUT" && url.pathname === "/admin/access") { const body = await objectBody(request); return this.adminJson({ granted: await this.deps.access.setAccess(stringField(body, "userId"), stringField(body, "mcpServerId"), Boolean(body.granted)) }); }
@@ -140,8 +142,12 @@ function findToolTarget(servers: readonly McpServer[], gatewayToolName: string) 
   const server = [...servers].sort((left, right) => right.id.length - left.id.length).find((candidate) => gatewayToolName.startsWith(`${candidate.id}__`));
   return server ? { server, upstreamToolName: gatewayToolName.slice(server.id.length + 2) } : undefined;
 }
-function discoveryResult() { return { resultType: "complete", supportedVersions: ["2026-07-28"], capabilities: { tools: { listChanged: true } }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "cria-mcp-gateway", version: "0.3.0" } }, ttlMs: 300_000, cacheScope: "private" }; }
-function legacyInitializeResult() { return { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "cria-mcp-gateway", version: "0.3.0" } }; }
+const serverIcons = [
+  { src: "https://somoscria.ar/favicon-192.png", mimeType: "image/png", sizes: "192x192" },
+  { src: "https://somoscria.ar/favicon-32x32.png", mimeType: "image/png", sizes: "32x32" }
+];
+function discoveryResult() { return { resultType: "complete", supportedVersions: ["2026-07-28"], capabilities: { tools: { listChanged: true } }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }, ttlMs: 300_000, cacheScope: "private" }; }
+function legacyInitializeResult() { return { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }; }
 function safeHeaders(headers: Headers) { return Object.fromEntries([...headers].map(([key, value]) => [key, /authorization|cookie|token|secret|api[-_]?key/i.test(key) ? "[redacted]" : truncate(value)])); }
 function sanitize(value: unknown): unknown { if (typeof value === "string") return truncate(value); if (Array.isArray(value)) return value.map(sanitize); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, /password|token|secret|authorization|api[-_]?key/i.test(key) ? "[redacted]" : sanitize(item)])); return value; }
 function truncate(value: string) { return value.length > 2000 ? `${value.slice(0, 2000)}…[truncated]` : value; }

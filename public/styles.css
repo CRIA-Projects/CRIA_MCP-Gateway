@@ -121,6 +121,12 @@ button.danger { background: rgba(190, 61, 80, .18); border-color: rgba(243, 140,
 
 button.danger:hover { background: rgba(190, 61, 80, .32); box-shadow: none; }
 
+button.is-loading { color: transparent; pointer-events: none; position: relative; }
+
+button.is-loading::after { animation: btn-spin .6s linear infinite; border: 2px solid rgba(255, 255, 255, .4); border-radius: 50%; border-top-color: #fff; content: ""; height: 1.05rem; left: 50%; position: absolute; top: 50%; transform: translate(-50%, -50%); width: 1.05rem; }
+
+@keyframes btn-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
 button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
 
 #message { margin: 1.25rem 0 0; }
@@ -136,6 +142,16 @@ button:disabled, input:disabled, select:disabled { cursor: not-allowed; opacity:
 .dashboard-intro { align-items: end; border-bottom: 1px solid var(--border); display: flex; gap: 1.5rem; justify-content: space-between; margin-bottom: 1.35rem; padding-bottom: 1.25rem; }
 
 .dashboard-intro p:not(.eyebrow) { color: var(--muted); font-size: .84rem; line-height: 1.55; margin: 0; max-width: 330px; text-align: right; }
+
+.tabs { border-bottom: 1px solid var(--border); display: flex; gap: .4rem; margin-top: 1.75rem; overflow-x: auto; }
+
+.tab { background: none; border: 1px solid transparent; border-radius: .6rem .6rem 0 0; box-shadow: none; color: var(--muted); font-size: .78rem; font-weight: 700; letter-spacing: .02em; margin-bottom: -1px; min-height: 2.6rem; padding: 0 1rem; white-space: nowrap; }
+
+.tab:hover { background: rgba(123, 166, 232, .08); color: var(--text); box-shadow: none; filter: none; transform: none; }
+
+.tab.active { background: var(--card); border-color: var(--border); border-bottom-color: var(--card); color: var(--text); }
+
+.tab-panel { margin-top: 2rem; }
 
 section { margin-top: 3.75rem; }
 
@@ -166,6 +182,22 @@ section { margin-top: 3.75rem; }
 .count { background: var(--blue-wash); border: 1px solid var(--blue-border); border-radius: 999px; color: #dce9ff; font-size: .71rem; font-weight: 700; padding: .45rem .7rem; white-space: nowrap; }
 
 .card-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); }
+
+.table-scroll { border: 1px solid var(--border); border-radius: .9rem; overflow-x: auto; }
+
+.analytics-table { border-collapse: collapse; font-size: .82rem; min-width: 640px; width: 100%; }
+
+.analytics-table th, .analytics-table td { padding: .75rem .9rem; text-align: left; white-space: nowrap; }
+
+.analytics-table thead th { background: var(--card-elevated); color: var(--muted); font-size: .68rem; font-weight: 800; letter-spacing: .06em; position: sticky; top: 0; text-transform: uppercase; }
+
+.analytics-table tbody tr { border-top: 1px solid var(--border); }
+
+.analytics-table tbody tr:hover { background: rgba(123, 166, 232, .06); }
+
+.analytics-table td:first-child { color: var(--text); font-weight: 700; }
+
+.analytics-table td.muted { font-weight: 400; white-space: normal; }
 
 .card, .assignment { background: var(--card); border: 1px solid var(--border); border-radius: .9rem; padding: 1.1rem; }
 

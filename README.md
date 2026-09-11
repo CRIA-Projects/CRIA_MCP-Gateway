@@ -35,12 +35,14 @@ La única URL MCP pública es `/mcp`: los IDs de los MCPs registrados son intern
 
 ## Administración y logs
 
-El panel solicita `ADMIN_API_KEY` y la envía únicamente a los endpoints `/admin/*`; la clave no se empaqueta en los assets estáticos. Desde el panel se puede:
+El panel solicita `ADMIN_API_KEY` y la envía únicamente a los endpoints `/admin/*`; la clave no se empaqueta en los assets estáticos. Está organizado en tres pestañas — Usuarios, MCPs y Logs — y desde ahí se puede:
 
-- crear, editar, habilitar/deshabilitar y eliminar usuarios;
-- crear, editar y eliminar MCPs demo o remotos HTTPS;
+- crear, editar, habilitar/deshabilitar y eliminar usuarios; ver su actividad reciente (requests, permitidos/denegados/errores, MCP más usado, última vez visto);
+- crear, editar y eliminar MCPs demo o remotos HTTPS (con un header `Authorization` opcional por MCP para integraciones que lo requieran); ver su uso reciente (llamadas, tool más usada, tasa de error, último uso);
 - asignar o revocar acceso usuario→MCP;
 - inspeccionar los últimos 100 requests MCP, con JSON-RPC, parámetros, headers seguros, resultado y timestamp.
+
+La analítica por usuario y por MCP (`GET /admin/analytics`) se calcula en el momento a partir del mismo buffer de auditoría (últimos 200 eventos) — no es un historial persistente aparte.
 
 Los valores de `Authorization`, cookies, tokens, claves y secretos se redactan en el log. Los argumentos de tools pueden contener datos de usuario: el inspector debe estar restringido al administrador.
 

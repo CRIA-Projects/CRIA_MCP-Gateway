@@ -25,8 +25,8 @@ Identity Policy Access   Registry Router  Audit
 | Access | Usuarios, MCPs y asignaciones; API de administración protegida | Memoria local / Netlify Blobs / Supabase |
 | Registry | Descubre herramientas y sus destinos por MCP | En memoria |
 | Router | Ejecuta una herramienta mediante su destino | Adaptador demo en memoria |
-| Audit | Captura requests MCP sanitizados para el inspector admin | Memoria local / Netlify Blobs / Supabase (últimos 200) |
-| Platform | HTTP local, panel estático y handlers Netlify | Implementado |
+| Audit | Captura requests MCP sanitizados para el inspector admin; `computeAnalytics` deriva actividad por usuario/MCP del mismo buffer | Memoria local / Netlify Blobs / Supabase (últimos 200) |
+| Platform | HTTP local, panel estático (pestañas Usuarios/MCPs/Logs) y handlers Netlify | Implementado |
 
 ## Contratos y límites
 
