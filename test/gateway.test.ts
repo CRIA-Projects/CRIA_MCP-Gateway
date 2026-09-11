@@ -32,7 +32,7 @@ test("the public gateway implements server/discover and federates only assigned 
   const gateway = app();
   const discovery = await (await gateway.handleRequest(rpc("/mcp", "ana", "server/discover"))).json() as { result: { supportedVersions: string[]; capabilities: { tools: { listChanged: boolean } } } };
   assert.deepEqual(discovery.result.supportedVersions, ["2026-07-28"]);
-  assert.equal(discovery.result.capabilities.tools.listChanged, true);
+  assert.equal(discovery.result.capabilities.tools.listChanged, false);
   await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "analysis", granted: true }));
   const list = await (await gateway.handleRequest(rpc("/mcp", "ana", "tools/list"))).json() as { result: { tools: Array<{ name: string }> } };
   assert.deepEqual(list.result.tools.map((tool) => tool.name), ["demo__demo.echo", "analysis__analysis.status"]);
@@ -118,6 +118,15 @@ test("admin analytics summarize activity per user and per MCP from the audit log
   const demo = analytics.mcpServers.find((server) => server.mcpServerId === "demo");
   assert.equal(demo?.totalCalls, 2);
   assert.equal(demo?.topTool, "demo__demo.echo");
+});
+
+test("an unrecognized MCP method is rejected while the initialized lifecycle notification is accepted", async () => {
+  const gateway = app();
+  const unknown = await (await gateway.handleRequest(rpc("/mcp", "ana", "subscriptions/listen"))).json() as { error?: { code: number } };
+  assert.equal(unknown.error?.code, -32601);
+  const initialized = await (await gateway.handleRequest(rpc("/mcp", "ana", "notifications/initialized"))).json() as { error?: unknown; result?: unknown };
+  assert.equal(initialized.error, undefined);
+  assert.deepEqual(initialized.result, {});
 });
 
 test("internal MCP IDs are not public paths", async () => {

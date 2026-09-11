@@ -36,6 +36,7 @@ export class GatewayApplication {
     if (message.method === "initialize") return { ...this.rpcOutcome(success(id, legacyInitializeResult()), "allowed", principal.id), mcpServerId: "gateway" };
     if (message.method === "tools/list") return this.listTools(principal, servers, message, request.headers);
     if (message.method === "tools/call") return this.callTool(principal, id, servers, message, request.headers);
+    if (message.method === "notifications/initialized") return { ...this.rpcOutcome(success(id, {}), "allowed", principal.id), mcpServerId: "gateway" };
     return this.rpcOutcome(failure(id, -32601, "Method not found"), "error", principal.id);
   }
 
@@ -146,7 +147,7 @@ const serverIcons = [
   { src: "https://somoscria.ar/favicon-192.png", mimeType: "image/png", sizes: "192x192" },
   { src: "https://somoscria.ar/favicon-32x32.png", mimeType: "image/png", sizes: "32x32" }
 ];
-function discoveryResult() { return { resultType: "complete", supportedVersions: ["2026-07-28"], capabilities: { tools: { listChanged: true } }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }, ttlMs: 300_000, cacheScope: "private" }; }
+function discoveryResult() { return { resultType: "complete", supportedVersions: ["2026-07-28"], capabilities: { tools: { listChanged: false } }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }, ttlMs: 300_000, cacheScope: "private" }; }
 function legacyInitializeResult() { return { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }; }
 function safeHeaders(headers: Headers) { return Object.fromEntries([...headers].map(([key, value]) => [key, /authorization|cookie|token|secret|api[-_]?key/i.test(key) ? "[redacted]" : truncate(value)])); }
 function sanitize(value: unknown): unknown { if (typeof value === "string") return truncate(value); if (Array.isArray(value)) return value.map(sanitize); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, /password|token|secret|authorization|api[-_]?key/i.test(key) ? "[redacted]" : sanitize(item)])); return value; }
