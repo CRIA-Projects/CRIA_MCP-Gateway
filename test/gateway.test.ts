@@ -92,6 +92,29 @@ test("a remote MCP with a configured authorization header sends it upstream", as
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test("a remote MCP with a custom auth header name sends that header instead of Authorization", async () => {
+  const gateway = app();
+  const originalFetch = globalThis.fetch;
+  const forwardedHeaders: Headers[] = [];
+  globalThis.fetch = async (_input, init) => {
+    forwardedHeaders.push(new Headers(init?.headers));
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { tools: [] } }), { headers: { "content-type": "application/json" } });
+  };
+  try {
+    await gateway.handleRequest(admin("/admin/servers", "POST", { id: "apikey-test", name: "API key test", kind: "remote", endpoint: "https://mcp.example.test/mcp", authorizationHeader: "sk-secret", authHeaderName: "X-API-Key" }));
+    await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "apikey-test", granted: true }));
+    await gateway.handleRequest(rpc("/mcp", "ana", "tools/list"));
+    assert.equal(forwardedHeaders[0].get("x-api-key"), "sk-secret");
+    assert.equal(forwardedHeaders[0].has("authorization"), false);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("creating an MCP server without a description succeeds", async () => {
+  const gateway = app();
+  const response = await gateway.handleRequest(admin("/admin/servers", "POST", { id: "no-desc", name: "No description", kind: "remote", endpoint: "https://mcp.example.test/mcp" }));
+  assert.equal(response.status, 201);
+});
+
 test("a demo MCP server rejects an authorization header", async () => {
   const gateway = app();
   const response = await gateway.handleRequest(admin("/admin/servers", "POST", { id: "bad-demo", name: "Bad demo", description: "Should fail", kind: "demo", authorizationHeader: "Bearer sk-secret" }));

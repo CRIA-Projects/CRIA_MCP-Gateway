@@ -38,7 +38,7 @@ La única URL MCP pública es `/mcp`: los IDs de los MCPs registrados son intern
 El panel solicita `ADMIN_API_KEY` y la envía únicamente a los endpoints `/admin/*`; la clave no se empaqueta en los assets estáticos. Está organizado en tres pestañas — Usuarios, MCPs y Logs — y desde ahí se puede:
 
 - crear, editar, habilitar/deshabilitar y eliminar usuarios; ver su actividad reciente (requests, permitidos/denegados/errores, MCP más usado, última vez visto);
-- crear, editar y eliminar MCPs demo o remotos HTTPS (con un header `Authorization` opcional por MCP para integraciones que lo requieran); ver su uso reciente (llamadas, tool más usada, tasa de error, último uso);
+- crear MCPs remotos con solo Nombre, URL y autenticación (Ninguna / Token Bearer / Header personalizado con nombre propio, ej. `X-API-Key`); el ID interno se genera solo a partir del Nombre y no es editable. Editar y eliminar MCPs; ver su uso reciente (llamadas, tool más usada, tasa de error, último uso);
 - asignar o revocar acceso usuario→MCP;
 - inspeccionar los últimos 100 requests MCP, con JSON-RPC, parámetros, headers seguros, resultado y timestamp.
 

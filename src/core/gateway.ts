@@ -56,7 +56,7 @@ export class GatewayApplication {
         return tools.map((tool) => toGatewayTool(server, tool));
       } catch { return []; }
     }));
-    return { ...this.rpcOutcome(success(message.id ?? null, { resultType: "complete", tools: toolGroups.flat(), ttlMs: 300_000, cacheScope: "private" }), "allowed", principal.id), mcpServerId: "gateway" };
+    return { ...this.rpcOutcome(success(message.id ?? null, { resultType: "complete", tools: toolGroups.flat(), ttlMs: 0, cacheScope: "private" }), "allowed", principal.id), mcpServerId: "gateway" };
   }
 
   private async remoteTools(server: McpServer, message: JsonRpcRequest, headers: Headers): Promise<GatewayTool[]> {
@@ -131,7 +131,16 @@ async function userBody(request: Request): Promise<GatewayUser> { const body = a
 async function userUpdateBody(request: Request): Promise<Omit<GatewayUser, "id">> { const body = await objectBody(request); return { name: stringField(body, "name"), enabled: Boolean(body.enabled) }; }
 async function serverBody(request: Request): Promise<McpServer> { const body = await objectBody(request); return { id: stringField(body, "id"), ...serverFields(body) }; }
 async function serverUpdateBody(request: Request): Promise<Omit<McpServer, "id">> { return serverFields(await objectBody(request)); }
-function serverFields(body: Record<string, unknown>): Omit<McpServer, "id"> { const kind = stringField(body, "kind"); if (kind !== "demo" && kind !== "remote") throw new Error("Server kind must be demo or remote"); const endpoint = typeof body.endpoint === "string" && body.endpoint.trim() ? body.endpoint.trim() : undefined; const authorizationHeader = typeof body.authorizationHeader === "string" && body.authorizationHeader.trim() ? body.authorizationHeader.trim() : undefined; return { name: stringField(body, "name"), description: stringField(body, "description"), kind, ...(endpoint ? { endpoint } : {}), ...(authorizationHeader ? { authorizationHeader } : {}) }; }
+function serverFields(body: Record<string, unknown>): Omit<McpServer, "id"> {
+  const kind = stringField(body, "kind");
+  if (kind !== "demo" && kind !== "remote") throw new Error("Server kind must be demo or remote");
+  const optionalTrimmed = (field: string) => typeof body[field] === "string" && (body[field] as string).trim() ? (body[field] as string).trim() : undefined;
+  const endpoint = optionalTrimmed("endpoint");
+  const description = optionalTrimmed("description");
+  const authorizationHeader = optionalTrimmed("authorizationHeader");
+  const authHeaderName = optionalTrimmed("authHeaderName");
+  return { name: stringField(body, "name"), kind, ...(description ? { description } : {}), ...(endpoint ? { endpoint } : {}), ...(authorizationHeader ? { authorizationHeader } : {}), ...(authHeaderName ? { authHeaderName } : {}) };
+}
 function stringField(body: Record<string, unknown>, name: string) { const value = body[name]; if (typeof value !== "string" || !value.trim()) throw new Error(`${name} must be a non-empty string`); return value.trim(); }
 function awaitRequired<T>(value: Promise<T | undefined>) { return value.then((result) => { if (!result) throw new Error("Not found"); return result; }); }
 function isRequest(value: unknown): value is JsonRpcRequest { return Boolean(value && typeof value === "object" && (value as Record<string, unknown>).jsonrpc === "2.0" && typeof (value as Record<string, unknown>).method === "string"); }
@@ -147,7 +156,7 @@ const serverIcons = [
   { src: "https://somoscria.ar/favicon-192.png", mimeType: "image/png", sizes: "192x192" },
   { src: "https://somoscria.ar/favicon-32x32.png", mimeType: "image/png", sizes: "32x32" }
 ];
-function discoveryResult() { return { resultType: "complete", supportedVersions: ["2026-07-28"], capabilities: { tools: { listChanged: false } }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }, ttlMs: 300_000, cacheScope: "private" }; }
+function discoveryResult() { return { resultType: "complete", supportedVersions: ["2026-07-28"], capabilities: { tools: { listChanged: false } }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }, ttlMs: 0, cacheScope: "private" }; }
 function legacyInitializeResult() { return { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }; }
 function safeHeaders(headers: Headers) { return Object.fromEntries([...headers].map(([key, value]) => [key, /authorization|cookie|token|secret|api[-_]?key/i.test(key) ? "[redacted]" : truncate(value)])); }
 function sanitize(value: unknown): unknown { if (typeof value === "string") return truncate(value); if (Array.isArray(value)) return value.map(sanitize); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, /password|token|secret|authorization|api[-_]?key/i.test(key) ? "[redacted]" : sanitize(item)])); return value; }
