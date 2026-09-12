@@ -16,11 +16,42 @@ export class DemoToolRouter implements ToolRouter {
 
   async forward(server: McpServer, message: JsonRpcRequest, incomingHeaders: Headers): Promise<RemoteMcpResponse> {
     if (!server.endpoint) throw new Error("Remote MCP endpoint is missing");
-    const headers = new Headers({ "content-type": "application/json", accept: incomingHeaders.get("accept") ?? "application/json, text/event-stream" });
+    const headers = this.buildHeaders(server, incomingHeaders);
+    const sessionId = await this.initializeSession(server.endpoint, headers);
+    if (sessionId) headers.set("mcp-session-id", sessionId);
+    const response = await this.post(server.endpoint, headers, message);
+    return { status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body: await response.text() };
+  }
+
+  private buildHeaders(server: McpServer, incomingHeaders: Headers): Headers {
+    // Always the MCP-mandated accept value for the upstream leg, regardless of what the
+    // original caller sent us: we parse the upstream's response ourselves (JSON or SSE),
+    // so the caller's own Accept header is irrelevant here and passing it through broke
+    // strict upstream servers that reject anything but this exact value (406).
+    const headers = new Headers({ "content-type": "application/json", accept: "application/json, text/event-stream" });
     const protocolVersion = incomingHeaders.get("mcp-protocol-version");
     if (protocolVersion) headers.set("mcp-protocol-version", protocolVersion);
     if (server.authorizationHeader) headers.set(server.authHeaderName ?? "authorization", server.authorizationHeader);
-    const response = await fetch(server.endpoint, { method: "POST", headers, body: JSON.stringify(message), signal: AbortSignal.timeout(20_000) });
-    return { status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body: await response.text() };
+    return headers;
+  }
+
+  // Some remote MCP servers (e.g. those built on the official SDK's Streamable HTTP
+  // transport) reject requests until a session is opened via `initialize`. We open a
+  // fresh session per forwarded call rather than caching one, matching the gateway's
+  // stateless MVP scope; servers that don't require sessions simply ignore this.
+  private async initializeSession(endpoint: string, headers: Headers): Promise<string | undefined> {
+    try {
+      const response = await this.post(endpoint, headers, {
+        jsonrpc: "2.0",
+        id: "gateway-init",
+        method: "initialize",
+        params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "cria-mcp-gateway", version: "0.3.0" } }
+      });
+      return response.headers.get("mcp-session-id") ?? undefined;
+    } catch { return undefined; }
+  }
+
+  private post(endpoint: string, headers: Headers, message: JsonRpcRequest): Promise<Response> {
+    return fetch(endpoint, { method: "POST", headers, body: JSON.stringify(message), signal: AbortSignal.timeout(20_000) });
   }
 }

@@ -49,11 +49,17 @@ Esto permite que un adaptador PostgreSQL, un validador JWT, o un cliente Streama
 
 `src/bootstrap.ts` los activa automáticamente cuando `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` están configuradas (local y Netlify); si no están, Netlify sigue usando Blobs y el desarrollo local usa memoria. RLS está habilitado sin políticas: solo `service_role` (usada server-side, nunca en el bundle del panel) puede leer o escribir esas filas.
 
+## Forwarding remoto y sesiones
+
+`DemoToolRouter.forward()` (`src/router/router.ts`) abre una sesión nueva contra el upstream en cada llamada: manda `initialize`, toma el header `Mcp-Session-Id` de la respuesta si el servidor lo devuelve, y lo reenvía en la llamada real (`tools/list`/`tools/call`). Esto es necesario porque algunos MCPs remotos (ej. los basados en el SDK oficial sobre Streamable HTTP, como servidores expuestos desde n8n) rechazan cualquier request antes de `initialize` con `400 Server not initialized`. El accept header hacia el upstream siempre es `application/json, text/event-stream` — nunca el que mandó el cliente original — porque varios de estos servidores devuelven `406` si falta alguno de los dos tipos. La respuesta puede venir como JSON plano o como `text/event-stream`; `parseRpcBody` en `src/core/gateway.ts` entiende ambos formatos para poder fusionar el `tools/list` de varios MCPs en una sola lista namespaced.
+
+No hay caché de sesión entre llamadas (cada forward abre y descarta la suya), así que un MCP que dependa de estado de sesión persistente entre requests, o de un stream SSE largo con eventos push, no está cubierto todavía.
+
 ## Deliberadamente fuera del MVP
 
 - OAuth/Supabase Auth (identidad sigue siendo `x-client-id`), sesiones persistentes y multi-tenant real.
 - Autenticación/roles de administrador reales y auditoría con retención configurable.
-- Proxy Streamable HTTP real hacia MCPs externos.
-- Roles de administrador, dashboard seguro, analytics y microservicios.
+- Sesión de Streamable HTTP cacheada entre llamadas y streams SSE largos hacia MCPs externos (hoy se abre una sesión nueva por request, ver "Forwarding remoto" abajo).
+- Roles de administrador y dashboard seguro (la analítica por usuario/MCP ya está implementada, ver `GET /admin/analytics`).
 
 El siguiente paso útil es sustituir identidad por JWT de Supabase Auth, conservando los contratos existentes.

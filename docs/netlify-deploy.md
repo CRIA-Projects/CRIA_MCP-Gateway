@@ -37,4 +37,4 @@ Para observar primero el tráfico, configurá el endpoint remoto como `https://T
 
 Esto es una prueba de transporte, no identidad individual: todos los clientes sin OAuth comparten ese principal de prueba. ChatGPT usa OAuth cuando una app necesita autenticar usuarios individualmente. Antes de dar acceso a usuarios reales, reemplazá `LocalIdentityResolver` por validación OAuth/Supabase Auth y no dejes ningún usuario de prueba asignado.
 
-El forwarding remoto de este MVP usa JSON-RPC por POST. Un upstream que exija sesiones Streamable HTTP/SSE necesita la extensión de sesión correspondiente antes de usarse en producción.
+El forwarding remoto de este MVP usa JSON-RPC por POST, abriendo una sesión (`initialize` + `Mcp-Session-Id`) por llamada y aceptando respuestas JSON o `text/event-stream`. No cachea la sesión entre llamadas ni sostiene un stream largo (SSE push continuo), así que un upstream que dependa de eso todavía necesita una extensión antes de usarse en producción.

@@ -69,10 +69,37 @@ test("an authorized remote MCP is listed and called through the public gateway",
     assert.deepEqual(list.result.tools.map((tool) => tool.name), ["demo__demo.echo", "remote-test__upstream_tool"]);
     const call = await (await gateway.handleRequest(rpc("/mcp", "ana", "tools/call", { name: "remote-test__upstream_tool", arguments: {} }))).json() as { result: { content: Array<{ text: string }> } };
     assert.equal(call.result.content[0].text, "remote result");
-    assert.deepEqual(forwarded, [
-      { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
-      { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "upstream_tool", arguments: {} } }
-    ]);
+    assert.deepEqual(forwarded.map((message) => message.method), ["initialize", "tools/list", "initialize", "tools/call"]);
+    assert.deepEqual(
+      forwarded.filter((message) => message.method !== "initialize"),
+      [
+        { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+        { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "upstream_tool", arguments: {} } }
+      ]
+    );
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("a session-requiring remote MCP that replies over SSE is still listed", async () => {
+  const gateway = app();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const message = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    const headers = new Headers(init?.headers);
+    if (message.method === "initialize") {
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }), { headers: { "content-type": "application/json", "mcp-session-id": "sess-123" } });
+    }
+    if (headers.get("mcp-session-id") !== "sess-123") {
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Server not initialized" } }), { status: 400, headers: { "content-type": "application/json" } });
+    }
+    const body = `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { tools: [{ name: "sse_tool", description: "SSE tool", inputSchema: { type: "object" } }] } })}\n\n`;
+    return new Response(body, { headers: { "content-type": "text/event-stream" } });
+  };
+  try {
+    await gateway.handleRequest(admin("/admin/servers", "POST", { id: "sse-test", name: "SSE test", kind: "remote", endpoint: "https://mcp.example.test/sse" }));
+    await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "sse-test", granted: true }));
+    const list = await (await gateway.handleRequest(rpc("/mcp", "ana", "tools/list"))).json() as { result: { tools: Array<{ name: string }> } };
+    assert.deepEqual(list.result.tools.map((tool) => tool.name), ["demo__demo.echo", "sse-test__sse_tool"]);
   } finally { globalThis.fetch = originalFetch; }
 });
 

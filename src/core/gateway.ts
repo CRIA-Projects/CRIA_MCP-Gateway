@@ -62,7 +62,7 @@ export class GatewayApplication {
   private async remoteTools(server: McpServer, message: JsonRpcRequest, headers: Headers): Promise<GatewayTool[]> {
     const response = await this.deps.router.forward(server, message, headers);
     if (response.status < 200 || response.status >= 300) throw new Error("Upstream MCP returned an error");
-    const payload: unknown = JSON.parse(response.body);
+    const payload: unknown = parseRpcBody(response.body, response.contentType);
     const result = payload && typeof payload === "object" ? (payload as { result?: unknown }).result : undefined;
     const tools = result && typeof result === "object" ? (result as { tools?: unknown }).tools : undefined;
     if (!Array.isArray(tools)) throw new Error("Upstream MCP tools/list response is invalid");
@@ -151,6 +151,12 @@ function toGatewayTool(server: McpServer, tool: GatewayTool): GatewayTool { retu
 function findToolTarget(servers: readonly McpServer[], gatewayToolName: string) {
   const server = [...servers].sort((left, right) => right.id.length - left.id.length).find((candidate) => gatewayToolName.startsWith(`${candidate.id}__`));
   return server ? { server, upstreamToolName: gatewayToolName.slice(server.id.length + 2) } : undefined;
+}
+function parseRpcBody(body: string, contentType: string): unknown {
+  if (!contentType.includes("text/event-stream")) return JSON.parse(body);
+  const dataLines = body.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim());
+  if (!dataLines.length) throw new Error("Empty event-stream response from upstream MCP");
+  return JSON.parse(dataLines[dataLines.length - 1]);
 }
 const serverIcons = [
   { src: "https://somoscria.ar/favicon-192.png", mimeType: "image/png", sizes: "192x192" },
