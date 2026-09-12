@@ -37,9 +37,18 @@ function switchTab(name) {
   document.querySelectorAll("[data-tab-panel]").forEach((panel) => panel.hidden = panel.dataset.tabPanel !== name);
 }
 document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
-function resetUser() { editingUserId = undefined; $("#user-form").reset(); $("#user-form-title").textContent = "Nuevo usuario"; $("#user-form [name=id]").disabled = false; $("#cancel-user").hidden = true; }
-function resetServer() { editingServerId = undefined; $("#server-form").reset(); $("#server-form-title").textContent = "Nuevo MCP"; $("#server-form [name=id]").disabled = false; $("#cancel-server").hidden = true; toggleEndpoint(); }
+function resetUser() { editingUserId = undefined; $("#user-form").reset(); $("#user-form-title").textContent = "Nuevo usuario"; $("#user-form [name=id]").disabled = false; $("#cancel-user").hidden = true; resetUserSlug(); }
+function resetServer() { editingServerId = undefined; $("#server-form").reset(); $("#server-form-title").textContent = "Nuevo MCP"; $("#server-form [name=id]").disabled = false; $("#cancel-server").hidden = true; toggleEndpoint(); resetServerSlug(); }
 function toggleEndpoint() { const remote = $("#server-form [name=kind]").value === "remote"; $("#endpoint-field").hidden = !remote; $("#server-form [name=endpoint]").required = remote; $("#auth-field").hidden = !remote; }
+const slugify = (value) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63);
+function wireAutoSlug(form) {
+  const nameInput = form.querySelector("[name=name]"), idInput = form.querySelector("[name=id]");
+  let touched = false;
+  idInput.addEventListener("input", () => { touched = true; });
+  nameInput.addEventListener("input", () => { if (!touched && !idInput.disabled) idInput.value = slugify(nameInput.value); });
+  return () => { touched = false; };
+}
+const resetUserSlug = wireAutoSlug($("#user-form")), resetServerSlug = wireAutoSlug($("#server-form"));
 $("#login-form").addEventListener("submit", async (event) => { event.preventDefault(); sessionStorage.setItem("cria-admin-key", $("#admin-key").value); try { clearMessage(); await withLoading(event.submitter, () => refresh()); } catch (error) { showMessage(error.message); sessionStorage.removeItem("cria-admin-key"); } });
 $("#user-form").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const body = { id: data.get("id"), name: data.get("name"), enabled: data.has("enabled") }; try { await withLoading(event.submitter, () => api(editingUserId ? `/admin/users/${editingUserId}` : "/admin/users", { method: editingUserId ? "PATCH" : "POST", body: JSON.stringify(editingUserId ? { name: body.name, enabled: body.enabled } : body) })); resetUser(); await refresh(); showMessage("Usuario guardado.", false); } catch (error) { showMessage(error.message); } });
 $("#server-form").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const body = { id: data.get("id"), name: data.get("name"), description: data.get("description"), kind: data.get("kind"), endpoint: data.get("endpoint") || undefined, authorizationHeader: data.get("authorizationHeader") || undefined }; try { await withLoading(event.submitter, () => api(editingServerId ? `/admin/servers/${editingServerId}` : "/admin/servers", { method: editingServerId ? "PATCH" : "POST", body: JSON.stringify(editingServerId ? { name: body.name, description: body.description, kind: body.kind, endpoint: body.endpoint, authorizationHeader: body.authorizationHeader } : body) })); resetServer(); await refresh(); showMessage("MCP guardado.", false); } catch (error) { showMessage(error.message); } });
