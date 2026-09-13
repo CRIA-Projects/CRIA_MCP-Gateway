@@ -159,8 +159,8 @@ function parseRpcBody(body: string, contentType: string): unknown {
   return JSON.parse(dataLines[dataLines.length - 1]);
 }
 const serverIcons = [
-  { src: "https://somoscria.ar/favicon-192.png", mimeType: "image/png", sizes: "192x192" },
-  { src: "https://somoscria.ar/favicon-32x32.png", mimeType: "image/png", sizes: "32x32" }
+  { src: "https://somoscria.ar/favicon-192.png", mimeType: "image/png", sizes: ["192x192"] },
+  { src: "https://somoscria.ar/favicon-32x32.png", mimeType: "image/png", sizes: ["32x32"] }
 ];
 function discoveryResult() { return { resultType: "complete", supportedVersions: ["2026-07-28"], capabilities: { tools: { listChanged: false } }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }, ttlMs: 0, cacheScope: "private" }; }
 function legacyInitializeResult() { return { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }; }
