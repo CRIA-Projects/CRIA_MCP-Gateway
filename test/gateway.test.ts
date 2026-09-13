@@ -30,9 +30,10 @@ test("admin changes access rules and the gateway immediately enforces the curren
 
 test("the public gateway implements server/discover and federates only assigned MCP tools", async () => {
   const gateway = app();
-  const discovery = await (await gateway.handleRequest(rpc("/mcp", "ana", "server/discover"))).json() as { result: { supportedVersions: string[]; capabilities: { tools: { listChanged: boolean } } } };
+  const discovery = await (await gateway.handleRequest(rpc("/mcp", "ana", "server/discover"))).json() as { result: { supportedVersions: string[]; capabilities: { tools: { listChanged: boolean } }; _meta: { "io.modelcontextprotocol/serverInfo": { icons: Array<{ sizes: string[] }> } } } };
   assert.deepEqual(discovery.result.supportedVersions, ["2026-07-28"]);
   assert.equal(discovery.result.capabilities.tools.listChanged, false);
+  assert.deepEqual(discovery.result._meta["io.modelcontextprotocol/serverInfo"].icons.map((icon) => icon.sizes), [["192x192"], ["32x32"]]);
   await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "analysis", granted: true }));
   const list = await (await gateway.handleRequest(rpc("/mcp", "ana", "tools/list"))).json() as { result: { tools: Array<{ name: string }> } };
   assert.deepEqual(list.result.tools.map((tool) => tool.name), ["demo__demo.echo", "analysis__analysis.status"]);
@@ -83,6 +84,7 @@ test("an authorized remote MCP is listed and called through the public gateway",
 test("a session-requiring remote MCP that replies over SSE is still listed", async () => {
   const gateway = app();
   const originalFetch = globalThis.fetch;
+  let toolRequestHeaders: Headers | undefined;
   globalThis.fetch = async (_input, init) => {
     const message = JSON.parse(String(init?.body)) as Record<string, unknown>;
     const headers = new Headers(init?.headers);
@@ -92,6 +94,7 @@ test("a session-requiring remote MCP that replies over SSE is still listed", asy
     if (headers.get("mcp-session-id") !== "sess-123") {
       return new Response(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Server not initialized" } }), { status: 400, headers: { "content-type": "application/json" } });
     }
+    toolRequestHeaders = headers;
     const body = `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { tools: [{ name: "sse_tool", description: "SSE tool", inputSchema: { type: "object" } }] } })}\n\n`;
     return new Response(body, { headers: { "content-type": "text/event-stream" } });
   };
@@ -100,6 +103,7 @@ test("a session-requiring remote MCP that replies over SSE is still listed", asy
     await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "sse-test", granted: true }));
     const list = await (await gateway.handleRequest(rpc("/mcp", "ana", "tools/list"))).json() as { result: { tools: Array<{ name: string }> } };
     assert.deepEqual(list.result.tools.map((tool) => tool.name), ["demo__demo.echo", "sse-test__sse_tool"]);
+    assert.equal(toolRequestHeaders?.get("accept"), "application/json, text/event-stream");
   } finally { globalThis.fetch = originalFetch; }
 });
 
