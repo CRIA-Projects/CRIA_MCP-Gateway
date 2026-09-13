@@ -17,8 +17,9 @@ export class DemoToolRouter implements ToolRouter {
   async forward(server: McpServer, message: JsonRpcRequest, incomingHeaders: Headers): Promise<RemoteMcpResponse> {
     if (!server.endpoint) throw new Error("Remote MCP endpoint is missing");
     const headers = this.buildHeaders(server, incomingHeaders);
-    const sessionId = await this.initializeSession(server.endpoint, headers);
-    if (sessionId) headers.set("mcp-session-id", sessionId);
+    const session = await this.initializeSession(server.endpoint, headers);
+    if (session?.id) headers.set("mcp-session-id", session.id);
+    if (session) await this.notifyInitialized(server.endpoint, headers);
     const response = await this.post(server.endpoint, headers, message);
     return { status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body: await response.text() };
   }
@@ -36,10 +37,10 @@ export class DemoToolRouter implements ToolRouter {
   }
 
   // Some remote MCP servers (e.g. those built on the official SDK's Streamable HTTP
-  // transport) reject requests until a session is opened via `initialize`. We open a
-  // fresh session per forwarded call rather than caching one, matching the gateway's
-  // stateless MVP scope; servers that don't require sessions simply ignore this.
-  private async initializeSession(endpoint: string, headers: Headers): Promise<string | undefined> {
+  // transport) reject requests until the legacy lifecycle completes. We open a fresh
+  // session per forwarded call rather than caching one, matching the gateway's stateless
+  // MVP scope; servers that don't require sessions simply ignore the extra messages.
+  private async initializeSession(endpoint: string, headers: Headers): Promise<{ id?: string } | undefined> {
     try {
       const response = await this.post(endpoint, headers, {
         jsonrpc: "2.0",
@@ -47,8 +48,14 @@ export class DemoToolRouter implements ToolRouter {
         method: "initialize",
         params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "cria-mcp-gateway", version: "0.3.0" } }
       });
-      return response.headers.get("mcp-session-id") ?? undefined;
+      return response.ok ? { id: response.headers.get("mcp-session-id") ?? undefined } : undefined;
     } catch { return undefined; }
+  }
+
+  private async notifyInitialized(endpoint: string, headers: Headers): Promise<void> {
+    try {
+      await this.post(endpoint, headers, { jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+    } catch { /* Older or non-conformant upstreams may reject this notification but still accept tools/list. */ }
   }
 
   private post(endpoint: string, headers: Headers, message: JsonRpcRequest): Promise<Response> {

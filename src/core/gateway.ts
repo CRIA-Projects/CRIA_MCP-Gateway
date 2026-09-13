@@ -53,10 +53,11 @@ export class GatewayApplication {
         const tools = server.kind === "remote"
           ? await this.remoteTools(server, message, headers)
           : (await this.deps.registry.list(server.id)).map(toMcpTool);
-        return tools.map((tool) => toGatewayTool(server, tool));
-      } catch { return []; }
+        return { tools: tools.map((tool) => toGatewayTool(server, tool)) };
+      } catch { return { tools: [], warning: { mcpServerId: server.id, mcpServerName: server.name, code: "upstream-unavailable" } }; }
     }));
-    return { ...this.rpcOutcome(success(message.id ?? null, { resultType: "complete", tools: toolGroups.flat(), ttlMs: 0, cacheScope: "private" }), "allowed", principal.id), mcpServerId: "gateway" };
+    const warnings = toolGroups.flatMap((group) => group.warning ? [group.warning] : []);
+    return { ...this.rpcOutcome(success(message.id ?? null, { resultType: "complete", tools: toolGroups.flatMap((group) => group.tools), ...(warnings.length ? { _meta: { "ar.somoscria/gatewayWarnings": warnings } } : {}), ttlMs: 0, cacheScope: "private" }), "allowed", principal.id), mcpServerId: "gateway" };
   }
 
   private async remoteTools(server: McpServer, message: JsonRpcRequest, headers: Headers): Promise<GatewayTool[]> {
