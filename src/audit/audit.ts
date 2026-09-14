@@ -16,7 +16,11 @@ export interface AuditEvent {
 }
 
 export interface AuditLog { record(event: AuditEvent): Promise<void>; list(limit: number): Promise<readonly AuditEvent[]>; }
-export interface AuditStorage { read(): Promise<readonly AuditEvent[]>; write(events: readonly AuditEvent[]): Promise<void>; }
+export interface AuditStorage {
+  read(): Promise<readonly AuditEvent[]>;
+  write(events: readonly AuditEvent[]): Promise<void>;
+  append?(event: AuditEvent, maximumEvents: number): Promise<void>;
+}
 
 export class InMemoryAuditStorage implements AuditStorage {
   private events: AuditEvent[] = [];
@@ -26,7 +30,7 @@ export class InMemoryAuditStorage implements AuditStorage {
 
 export class PersistentAuditLog implements AuditLog {
   constructor(private readonly storage: AuditStorage, private readonly maximumEvents = 200) {}
-  async record(event: AuditEvent) { const events = await this.storage.read(); await this.storage.write([structuredClone(event), ...events].slice(0, this.maximumEvents)); }
+  async record(event: AuditEvent) { if (this.storage.append) return this.storage.append(event, this.maximumEvents); const events = await this.storage.read(); await this.storage.write([structuredClone(event), ...events].slice(0, this.maximumEvents)); }
   async list(limit: number) { return (await this.storage.read()).slice(0, Math.min(Math.max(limit, 1), this.maximumEvents)); }
 }
 

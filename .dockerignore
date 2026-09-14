@@ -1,0 +1,16 @@
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/
+!src/**
+!netlify/
+!netlify/functions/
+!netlify/functions/*.ts
+!test/
+!test/**
+!public/
+!public/**
+!scripts/
+!scripts/*.mjs

@@ -42,6 +42,8 @@
 
 ## [context.backend]
 
+- Self-hosted branch: `src/platform/standalone.ts` wires SQLite only when `SQLITE_PATH` is set. New SQLite instances use empty seed and no fallback user; require admin keys >=32 characters. Production standalone refuses memory-only persistence. HTTP edge catches request failures and drains on SIGTERM/SIGINT. Netlify composition remains separate.
+
 - Language + runtime: TypeScript 5.8+, Node.js >=22, ESM / NodeNext, strict compiler settings.
 - Framework: native Fetch API application core; Node `http` local adapter; Netlify function adapters.
 - Entry points: `src/platform/http/server.ts` (local server); `netlify/functions/mcp.ts`; `netlify/functions/health.ts`; composition root `src/bootstrap.ts`.
@@ -67,6 +69,8 @@
 
 ## [context.data]
 
+- Self-hosted SQLite: Node 24 `node:sqlite`, schema v1 managed transactionally in `src/platform/sqlite/database.ts`, local disk + WAL + FULL sync + 5s busy timeout. One JSON access row, individual audit event rows (latest 200). Optional atomic storage operations prevent read-modify-write losses in SQLite without changing existing Supabase/Blob adapters. Backup via SQLite backup API; rollback uses a restored snapshot and previous image. Single instance, no shared network filesystem.
+
 - Databases (type + name): optional Supabase Postgres (`cria_gateway_access_state`, `cria_gateway_audit_events`, prefixed to coexist with other projects' tables in the same instance), used when `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are set; otherwise falls back to Netlify Blobs (`cria-mcp-access`, `cria-mcp-audit`) in deployment or in-memory adapters locally. Selection happens in `src/bootstrap.ts`.
 - ORM / query layer: none; `@supabase/supabase-js` client used directly with the `service_role` key server-side only.
 - Migration strategy: hand-written idempotent SQL under `supabase/migrations/`, applied manually via the Supabase SQL Editor (no CLI/automation yet).
@@ -77,6 +81,8 @@
 
 ## [context.testing]
 
+- Self-hosted integration tests use disposable SQLite files, concurrent storage connections, backup/reopen and real loopback HTTP subprocesses with the stdio VPN bridge. `npm run test:docker` validates container recreation on an isolated Compose project and cleans only its own volume.
+
 - Unit test framework: Node built-in `node:test` with `node:assert/strict`.
 - Integration test approach: requests are sent directly to `GatewayApplication`; cases cover admin authentication, live access-rule changes, `server/discover`, federated namespaced tools, audit redaction, remote forwarding, health, and the single public endpoint contract.
 - E2E tooling: none.
@@ -85,6 +91,8 @@
 - CI gate (pass/fail criteria): no CI configuration found; run `npm run check` and `npm test` locally.
 
 ## [context.devops]
+
+- Self-hosted distribution: multi-stage Node 24 Dockerfile, non-root runtime, `.dockerignore` allowlist, Compose read-only rootfs + `/data` volume. Published port defaults to loopback; `CRIA_BIND_ADDRESS` can target VPN IP. CI workflow `self-hosted.yml` runs tests + Docker smoke, with no deploy/publish. Backup/restore and local Claude Desktop bridge documented in `docs/self-hosted.md`; remote Claude web connectors cannot enter a private VPN. Customer VPN routing/DNS/CA remains environment-specific.
 
 - Cloud provider: Netlify is the MVP deployment target, using site-wide Netlify Blobs for configuration and audit persistence.
 - Deployment method: `netlify.toml` builds with `npm run build`, publishes `public/`, packages `netlify/functions`, and redirects `/mcp`, `/admin/*`, and `/health`.

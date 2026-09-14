@@ -6,6 +6,8 @@ Incluye un panel administrativo en `/` para gestionar MCPs, usuarios y asignacio
 
 ## Ejecutar localmente
 
+Para instalar una instancia propia en una red privada: [Docker + SQLite y conexión de Claude Desktop por VPN](docs/self-hosted.md). Incluye `compose.yaml`, persistencia local, backups y un puente local que envía el ID del usuario del HUB. Esta edición requiere Node 24 (incluido en la imagen Docker).
+
 ```bash
 cp .env.example .env
 npm install

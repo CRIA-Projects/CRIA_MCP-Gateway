@@ -1,0 +1,6 @@
+# Optional overlay: restore into a NEW volume, leaving the original intact.
+# Use alongside compose.yaml after creating and populating this volume.
+volumes:
+  gateway-data:
+    external: true
+    name: ${CRIA_RESTORE_VOLUME:?Set CRIA_RESTORE_VOLUME to the restored volume}

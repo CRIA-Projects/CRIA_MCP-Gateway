@@ -19,7 +19,12 @@ export interface AccessConfiguration {
   setAccess(userId: string, mcpServerId: string, granted: boolean): Promise<boolean>;
 }
 
-export interface AccessStateStorage { read(): Promise<PublicGatewayConfiguration | undefined>; write(state: PublicGatewayConfiguration): Promise<void>; }
+export interface AccessStateStorage {
+  read(): Promise<PublicGatewayConfiguration | undefined>;
+  write(state: PublicGatewayConfiguration): Promise<void>;
+  // Optional atomic read-modify-write for transactional storage adapters.
+  update?<T>(seed: PublicGatewayConfiguration, operation: (state: MutableState) => T): Promise<T>;
+}
 
 export class InMemoryAccessStateStorage implements AccessStateStorage {
   private state?: PublicGatewayConfiguration;
@@ -46,11 +51,11 @@ export class PersistentAccessConfiguration implements AccessConfiguration {
   async updateMcpServer(id: string, input: Omit<McpServer, "id">) { validateServer({ id, ...input }); return this.mutate((state) => { const server = state.mcpServers.find((candidate) => candidate.id === id); if (!server) return undefined; Object.assign(server, input); if (input.kind === "demo") { delete server.endpoint; delete server.authorizationHeader; delete server.authHeaderName; } else { server.endpoint = input.endpoint; if (input.authorizationHeader) { server.authorizationHeader = input.authorizationHeader; if (input.authHeaderName) server.authHeaderName = input.authHeaderName; else delete server.authHeaderName; } else { delete server.authorizationHeader; delete server.authHeaderName; } } return copy(server); }); }
   async removeMcpServer(id: string) { return this.mutate((state) => { const existed = state.mcpServers.some((server) => server.id === id); state.mcpServers = state.mcpServers.filter((server) => server.id !== id); state.assignments = state.assignments.filter((assignment) => assignment.mcpServerId !== id); return existed; }); }
   async setAccess(userId: string, mcpServerId: string, granted: boolean) { return this.mutate((state) => { if (!state.users.some((user) => user.id === userId) || !state.mcpServers.some((server) => server.id === mcpServerId)) throw new Error("User or MCP server was not found"); const exists = state.assignments.some((assignment) => assignment.userId === userId && assignment.mcpServerId === mcpServerId); if (granted && !exists) state.assignments.push({ userId, mcpServerId }); if (!granted && exists) state.assignments = state.assignments.filter((assignment) => assignment.userId !== userId || assignment.mcpServerId !== mcpServerId); return granted; }); }
-  private async state() { const stored = await this.storage.read(); if (stored) return copy(stored); const seeded = copy(this.seed); await this.storage.write(seeded); return seeded; }
-  private async mutate<T>(operation: (state: MutableState) => T): Promise<T> { const state = copy(await this.state()) as MutableState; const result = operation(state); await this.storage.write(state); return copy(result); }
+  private async state() { const stored = await this.storage.read(); if (stored) return copy(stored); if (this.storage.update) return this.storage.update(this.seed, (state) => copy(state)); const seeded = copy(this.seed); await this.storage.write(seeded); return seeded; }
+  private async mutate<T>(operation: (state: MutableState) => T): Promise<T> { if (this.storage.update) return this.storage.update(this.seed, operation); const state = copy(await this.state()) as MutableState; const result = operation(state); await this.storage.write(state); return copy(result); }
 }
 
-type MutableState = { users: GatewayUser[]; mcpServers: McpServer[]; assignments: McpAccessAssignment[] };
+export type MutableState = { users: GatewayUser[]; mcpServers: McpServer[]; assignments: McpAccessAssignment[] };
 const idPattern = /^[a-z0-9][a-z0-9-_]{0,62}$/;
 function validateUser(user: GatewayUser) { if (!idPattern.test(user.id) || !user.name.trim()) throw new Error("User requires a lowercase ID and a name"); }
 const headerNamePattern = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;

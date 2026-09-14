@@ -1,0 +1,33 @@
+services:
+  gateway:
+    build: .
+    image: ${CRIA_IMAGE:-cria-mcp-gateway:local}
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "8787"
+      SQLITE_PATH: /data/gateway.sqlite
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY in .env.docker}
+      MCP_GATEWAY_TRUSTED_CLIENT_ID: ${MCP_GATEWAY_TRUSTED_CLIENT_ID:-}
+    ports:
+      - "${CRIA_BIND_ADDRESS:-127.0.0.1}:${CRIA_PORT:-8787}:8787"
+    volumes:
+      - gateway-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  gateway-data:
