@@ -2,6 +2,8 @@
 
 Authorized scope: one private-network installation per customer, with the existing HUB, user assignments and audit log. Keep Netlify available. The branch includes the upstream protocol-isolation fix.
 
+Distribution lifecycle: `docker` is a permanent branch parallel to `main`, not a feature destined for a full merge into `main`. Future Docker PRs target `docker`; shared fixes are ported selectively.
+
 Acceptance criteria:
 - Docker Compose starts the Node HTTP server and HUB without Netlify or Supabase credentials.
 - Users, MCP definitions/credentials, assignments and the latest 200 audit events persist in a SQLite volume across container recreation.

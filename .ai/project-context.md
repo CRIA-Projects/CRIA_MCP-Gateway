@@ -92,11 +92,13 @@
 
 ## [context.devops]
 
+- Permanent edition branches: `main` for Netlify; `docker` for self-hosted Docker/SQLite. Docker PRs target `docker`, never a full-edition merge into `main`. Shared fixes are ported selectively. Repository default remains `main`.
+
 - Self-hosted distribution: multi-stage Node 24 Dockerfile, non-root runtime, `.dockerignore` allowlist, Compose read-only rootfs + `/data` volume. Published port defaults to loopback; `CRIA_BIND_ADDRESS` can target VPN IP. CI workflow `self-hosted.yml` runs tests + Docker smoke, with no deploy/publish. Backup/restore and local Claude Desktop bridge documented in `docs/self-hosted.md`; remote Claude web connectors cannot enter a private VPN. Customer VPN routing/DNS/CA remains environment-specific.
 
 - Cloud provider: Netlify is the MVP deployment target, using site-wide Netlify Blobs for configuration and audit persistence.
 - Deployment method: `netlify.toml` builds with `npm run build`, publishes `public/`, packages `netlify/functions`, and redirects `/mcp`, `/admin/*`, and `/health`.
-- CI/CD platform: NEEDS CLARIFICATION; none found in the repository.
+- CI/CD platform: GitHub Actions `self-hosted.yml` validates pushes and PRs targeting `docker`; checks, tests and Docker smoke only, no deployment.
 - Environment names (dev / staging / prod): local development is documented; staging/production are NEEDS CLARIFICATION.
 - Secrets management: `ADMIN_API_KEY` is required in Netlify to enable the admin; `MCP_GATEWAY_TRUSTED_CLIENT_ID` is a local default identity only. `SUPABASE_SERVICE_ROLE_KEY` (optional, enables Supabase persistence) is a server-only secret. None of these are bundled into static assets.
 - Monitoring / alerting: startup stdout and in-memory audit only; NEEDS CLARIFICATION.

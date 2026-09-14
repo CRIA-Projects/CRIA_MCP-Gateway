@@ -222,6 +222,8 @@ Bootstrap command:
 
 ## CRIA MCP Gateway operating notes
 
+- `docker` is a permanent self-hosted release line parallel to `main` (Netlify), not a feature branch to merge wholesale into `main`. Base Docker work and PRs on `docker`; port shared fixes selectively and validate each edition. Keep the repository default branch as `main`.
+
 - Self-hosted Docker/SQLite is specified in `specs/features/self-hosted-docker/`. Keep `node:sqlite` behind the standalone transport composition; do not import it into Netlify. Validate persistent mutations and audit retention with the SQLite integration tests. VPN usage requires a local client/bridge; a cloud connector does not inherit the user's VPN connection.
 
 - Keep `src/core/` transport- and provider-agnostic; wire concrete adapters only in `src/bootstrap.ts` or transport edges.

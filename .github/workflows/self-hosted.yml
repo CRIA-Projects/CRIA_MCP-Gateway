@@ -1,8 +1,9 @@
 name: Self-hosted Docker
 on:
   push:
-    branches: [feat/self-hosted-docker-sqlite]
+    branches: [docker]
   pull_request:
+    branches: [docker]
     paths:
       - "src/**"
       - "test/**"

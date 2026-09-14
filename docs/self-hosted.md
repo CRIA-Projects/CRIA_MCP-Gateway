@@ -2,12 +2,14 @@
 
 Edición de una instancia por cliente. Incluye HUB, `/mcp`, permisos por ID y SQLite en disco local. No requiere Netlify ni Supabase. No instala una VPN: el servidor y las computadoras deben tener conectividad VPN, DNS y rutas configuradas por el cliente.
 
+La rama permanente `docker` mantiene esta edición en paralelo a `main` (edición Netlify). No es una feature destinada a fusionarse completa en `main`. Los cambios de esta distribución y sus PRs deben partir de `docker` y apuntar a `docker`; las correcciones compartidas se portan de forma selectiva y se validan en cada edición.
+
 ## Instalación
 
 Requisitos: servidor Linux con Docker Engine y Compose v2 (con `up --wait`), disco local persistente y acceso a los MCPs internos por HTTPS. Las imágenes Node oficiales permiten construir para amd64 y arm64. No colocar SQLite en NFS/SMB ni ejecutar réplicas compartiendo el archivo.
 
 ```sh
-git clone --branch feat/self-hosted-docker-sqlite https://github.com/CRIA-Projects/CRIA_MCP-Gateway.git
+git clone --branch docker https://github.com/CRIA-Projects/CRIA_MCP-Gateway.git
 cd CRIA_MCP-Gateway
 cp .env.docker.example .env.docker
 openssl rand -hex 32
