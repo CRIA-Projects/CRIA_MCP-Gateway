@@ -11,6 +11,7 @@ export class LocalIdentityResolver implements IdentityResolver {
   constructor(private readonly clientId: string) {}
 
   async resolve(request: Request): Promise<Principal> {
-    return { id: request.headers.get("x-client-id") ?? this.clientId, kind: "client" };
+    const urlClientId = new URL(request.url).searchParams.get("clientId");
+    return { id: request.headers.get("x-client-id") ?? urlClientId ?? this.clientId, kind: "client" };
   }
 }

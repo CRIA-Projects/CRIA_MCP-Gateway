@@ -28,6 +28,15 @@ test("admin changes access rules and the gateway immediately enforces the curren
   assert.equal(disabled.error.code, -32003);
 });
 
+test("the connector URL can select the same development client ID used by the HUB", async () => {
+  const gateway = app();
+  await gateway.handleRequest(admin("/admin/users", "POST", { id: "30484546", name: "Boni", enabled: true }));
+  await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "30484546", mcpServerId: "analysis", granted: true }));
+  const request = new Request("http://localhost/mcp?clientId=30484546", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) });
+  const response = await (await gateway.handleRequest(request)).json() as { result: { tools: Array<{ name: string }> } };
+  assert.deepEqual(response.result.tools.map((tool) => tool.name), ["analysis__analysis.status"]);
+});
+
 test("the public gateway implements server/discover and federates only assigned MCP tools", async () => {
   const gateway = app();
   const discovery = await (await gateway.handleRequest(rpc("/mcp", "ana", "server/discover"))).json() as { result: { supportedVersions: string[]; capabilities: { tools: { listChanged: boolean } }; _meta: { "io.modelcontextprotocol/serverInfo": { icons: Array<{ sizes: string[] }> } } } };
