@@ -123,6 +123,44 @@ test("a session-requiring remote MCP that replies over SSE is still listed", asy
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test("a modern client's refreshed catalog includes newly assigned legacy MCPs and enforces revocation", async () => {
+  const gateway = app();
+  const originalFetch = globalThis.fetch;
+  const clientHeaders = { "mcp-protocol-version": "2026-07-28" };
+  const methods: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const message = JSON.parse(String(init?.body));
+    const headers = new Headers(init?.headers);
+    methods.push(message.method);
+    // Reproduces A30: the legacy server rejects an unsupported HTTP version,
+    // even when initialize's body requests a version it supports.
+    const version = headers.get("mcp-protocol-version");
+    if (version && version !== "2025-03-26") return Response.json({ error: "Unsupported protocol version" }, { status: 400 });
+    if (message.method === "initialize") return Response.json({ jsonrpc: "2.0", id: message.id, result: { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "legacy", version: "1" } } }, { headers: { "mcp-session-id": "legacy-session" } });
+    if (headers.get("mcp-session-id") !== "legacy-session") return new Response(null, { status: 400 });
+    if (message.method === "notifications/initialized") return new Response(null, { status: 202 });
+    return Response.json({ jsonrpc: "2.0", id: message.id, result: message.method === "tools/list" ? { tools: [{ name: "report", inputSchema: { type: "object" } }] } : { content: [{ type: "text", text: "report result" }] } });
+  };
+  const list = async () => (await gateway.handleRequest(rpc("/mcp", "ana", "tools/list", {}, clientHeaders))).json();
+  try {
+    await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "analysis", granted: true }));
+    assert.deepEqual((await list()).result.tools.map((tool: { name: string }) => tool.name), ["demo__demo.echo", "analysis__analysis.status"]);
+    await gateway.handleRequest(admin("/admin/servers", "POST", { id: "legacy", name: "Legacy MCP", kind: "remote", endpoint: "https://mcp.example.test/mcp" }));
+    await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "legacy", granted: true }));
+    const refreshed = await list();
+    assert.deepEqual(refreshed.result.tools.map((tool: { name: string }) => tool.name), ["demo__demo.echo", "analysis__analysis.status", "legacy__report"]);
+    assert.equal(refreshed.result._meta, undefined);
+    const call = await (await gateway.handleRequest(rpc("/mcp", "ana", "tools/call", { name: "legacy__report", arguments: {} }, clientHeaders))).json();
+    assert.equal(call.result.content[0].text, "report result");
+    assert.deepEqual(methods, ["initialize", "notifications/initialized", "tools/list", "initialize", "notifications/initialized", "tools/call"]);
+    await gateway.handleRequest(admin("/admin/access", "PUT", { userId: "ana", mcpServerId: "legacy", granted: false }));
+    assert.deepEqual((await list()).result.tools.map((tool: { name: string }) => tool.name), ["demo__demo.echo", "analysis__analysis.status"]);
+    const denied = await (await gateway.handleRequest(rpc("/mcp", "ana", "tools/call", { name: "legacy__report" }, clientHeaders))).json();
+    assert.equal(denied.error.code, -32602);
+    assert.equal(methods.length, 6);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("tools/list flags assigned upstreams that failed without hiding healthy MCPs", async () => {
   const gateway = app();
   const originalFetch = globalThis.fetch;

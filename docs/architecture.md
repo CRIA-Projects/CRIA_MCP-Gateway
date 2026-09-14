@@ -51,6 +51,8 @@ Esto permite que un adaptador PostgreSQL, un validador JWT, o un cliente Streama
 
 ## Forwarding remoto y sesiones
 
+El header `MCP-Protocol-Version` del cliente no se copia al upstream: son conexiones independientes. Este adaptador usa el handshake legacy con `2025-03-26` y deja que el upstream utilice la versión de su sesión o su valor legacy por defecto. Reenviar `2026-07-28` provocaba que A30 no apareciera en `tools/list`, aun con el mismo usuario y las mismas asignaciones. Esta corrección no implementa notificaciones de cambios al cliente: las asignaciones se vuelven a consultar cuando llega otro `tools/list`.
+
 `DemoToolRouter.forward()` (`src/router/router.ts`) abre una sesión nueva contra el upstream en cada llamada: manda `initialize`, toma el header `Mcp-Session-Id` de la respuesta si el servidor lo devuelve, y lo reenvía en la llamada real (`tools/list`/`tools/call`). Esto es necesario porque algunos MCPs remotos (ej. los basados en el SDK oficial sobre Streamable HTTP, como servidores expuestos desde n8n) rechazan cualquier request antes de `initialize` con `400 Server not initialized`. El accept header hacia el upstream siempre es `application/json, text/event-stream` — nunca el que mandó el cliente original — porque varios de estos servidores devuelven `406` si falta alguno de los dos tipos. La respuesta puede venir como JSON plano o como `text/event-stream`; `parseRpcBody` en `src/core/gateway.ts` entiende ambos formatos para poder fusionar el `tools/list` de varios MCPs en una sola lista namespaced.
 
 No hay caché de sesión entre llamadas (cada forward abre y descarta la suya), así que un MCP que dependa de estado de sesión persistente entre requests, o de un stream SSE largo con eventos push, no está cubierto todavía.
