@@ -2,6 +2,8 @@
 
 Esta es la rama permanente `docker`: edición autohospedada con Docker y SQLite para redes privadas. Se mantiene en paralelo a `main` (Netlify), no se fusiona como una feature. Los PRs de esta edición deben apuntar a `docker`. [Instalación y operación](docs/self-hosted.md).
 
+Para administradores y usuarios: [Conectar MCPs, asignar permisos y configurar Claude: qué claves van en cada lugar](docs/conectar-mcps-y-claude.md).
+
 MVP de gateway MCP remoto, stateless y modular. Expone un único servidor MCP público, identifica al cliente, reúne solo las herramientas de los MCPs que tiene habilitados, enruta cada llamada al upstream correspondiente y registra la decisión.
 
 Incluye un panel administrativo en `/` para gestionar MCPs, usuarios y asignaciones, junto con un inspector de requests que muestra qué recibe el gateway. En Netlify los datos y los últimos eventos se guardan persistentemente con Netlify Blobs.

@@ -42,6 +42,8 @@ Los endpoints de MCPs registrados siguen requiriendo HTTPS. Para una CA privada,
 
 ## Claude Desktop dentro de la VPN
 
+Para el alta de MCPs en el HUB, credenciales, asignaciones y ejemplos completos de macOS/Windows, ver [Instructivo de conexión de MCPs y Claude](conectar-mcps-y-claude.md).
+
 Un conector remoto agregado por URL a Claude se ejecuta desde la nube de Anthropic, incluso en Desktop. No puede acceder directamente a una dirección exclusiva de tu VPN. Esta edición proporciona un puente **local stdio** para la configuración local de Claude Desktop; no se agrega como conector web. [Referencia de Anthropic](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
 
 1. En cada computadora conectada a la VPN, instalá Node 24 y copiá `scripts/claude-vpn-bridge.mjs` a una ubicación estable. No necesita `npm install`.

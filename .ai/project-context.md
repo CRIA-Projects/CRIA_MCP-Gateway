@@ -92,6 +92,8 @@
 
 ## [context.devops]
 
+- Customer onboarding and credential placement: `docs/conectar-mcps-y-claude.md` covers HUB setup, assignments, local Claude Desktop configuration on macOS/Windows, VPN troubleshooting and unverified client-ID limits. Installation/backup remain in `docs/self-hosted.md`.
+
 - Permanent edition branches: `main` for Netlify; `docker` for self-hosted Docker/SQLite. Docker PRs target `docker`, never a full-edition merge into `main`. Shared fixes are ported selectively. Repository default remains `main`.
 
 - Self-hosted distribution: multi-stage Node 24 Dockerfile, non-root runtime, `.dockerignore` allowlist, Compose read-only rootfs + `/data` volume. Published port defaults to loopback; `CRIA_BIND_ADDRESS` can target VPN IP. CI workflow `self-hosted.yml` runs tests + Docker smoke, with no deploy/publish. Backup/restore and local Claude Desktop bridge documented in `docs/self-hosted.md`; remote Claude web connectors cannot enter a private VPN. Customer VPN routing/DNS/CA remains environment-specific.
