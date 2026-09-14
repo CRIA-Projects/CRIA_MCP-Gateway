@@ -14,9 +14,9 @@ export class DemoToolRouter implements ToolRouter {
     return { content: [{ type: "text", text: String(args.message ?? "Gateway route verified") }] };
   }
 
-  async forward(server: McpServer, message: JsonRpcRequest, incomingHeaders: Headers): Promise<RemoteMcpResponse> {
+  async forward(server: McpServer, message: JsonRpcRequest, _incomingHeaders: Headers): Promise<RemoteMcpResponse> {
     if (!server.endpoint) throw new Error("Remote MCP endpoint is missing");
-    const headers = this.buildHeaders(server, incomingHeaders);
+    const headers = this.buildHeaders(server);
     const session = await this.initializeSession(server.endpoint, headers);
     if (session?.id) headers.set("mcp-session-id", session.id);
     if (session) await this.notifyInitialized(server.endpoint, headers);
@@ -24,14 +24,15 @@ export class DemoToolRouter implements ToolRouter {
     return { status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body: await response.text() };
   }
 
-  private buildHeaders(server: McpServer, incomingHeaders: Headers): Headers {
+  private buildHeaders(server: McpServer): Headers {
     // Always the MCP-mandated accept value for the upstream leg, regardless of what the
     // original caller sent us: we parse the upstream's response ourselves (JSON or SSE),
     // so the caller's own Accept header is irrelevant here and passing it through broke
     // strict upstream servers that reject anything but this exact value (406).
     const headers = new Headers({ "content-type": "application/json", accept: "application/json, text/event-stream" });
-    const protocolVersion = incomingHeaders.get("mcp-protocol-version");
-    if (protocolVersion) headers.set("mcp-protocol-version", protocolVersion);
+    // The downstream version describes a different connection. This adapter opens
+    // its own legacy session (2025-03-26); let the upstream use that session's
+    // version, or its legacy default, instead of leaking a modern client's header.
     if (server.authorizationHeader) headers.set(server.authHeaderName ?? "authorization", server.authorizationHeader);
     return headers;
   }
