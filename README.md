@@ -48,7 +48,7 @@ Los valores de `Authorization`, cookies, tokens, claves y secretos se redactan e
 
 ## Seguridad y siguiente etapa
 
-`x-client-id` sigue siendo exclusivamente un mecanismo de desarrollo y no identifica de manera segura al usuario MCP. El panel usa una clave compartida como límite mínimo de MVP; para producción pública, reemplazalo por Supabase Auth, roles de administrador y JWT validados en `LocalIdentityResolver`. El forwarding remoto abre una sesión (`initialize`) por cada llamada al upstream y reenvía el `Mcp-Session-Id` si el servidor la exige, y entiende tanto JSON plano como respuestas `text/event-stream`; no cachea sesiones entre llamadas ni sostiene streams largos.
+`x-client-id` sigue siendo exclusivamente un mecanismo de desarrollo y no identifica de manera segura al usuario MCP. Como alternativa compatible con conectores que no permiten headers personalizados, una URL como `/mcp?clientId=ana` usa ese ID para aplicar las asignaciones existentes del panel. No es autenticación: cualquiera que conozca o cambie ese ID puede suplantarlo. Para producción pública, reemplazalo por Supabase Auth, roles de administrador y JWT validados en `LocalIdentityResolver`. El forwarding remoto abre una sesión (`initialize`) por cada llamada al upstream y reenvía el `Mcp-Session-Id` si el servidor la exige, y entiende tanto JSON plano como respuestas `text/event-stream`; no cachea sesiones entre llamadas ni sostiene streams largos.
 
 ## Scripts
 

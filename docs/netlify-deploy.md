@@ -16,7 +16,7 @@ Antes del primer deploy, creá esta variable de entorno para Production (y Deplo
 | --- | --- |
 | `ADMIN_API_KEY` | Una clave aleatoria larga que vos conservás. Nunca uses `development-admin-key`. |
 
-Opcionalmente, `MCP_GATEWAY_TRUSTED_CLIENT_ID` cambia la identidad que recibe una llamada MCP sin `x-client-id`; debe coincidir con un usuario habilitado y asignado en el admin.
+Opcionalmente, `MCP_GATEWAY_TRUSTED_CLIENT_ID` cambia la identidad que recibe una llamada MCP sin `x-client-id` ni `clientId` en la URL; debe coincidir con un usuario habilitado y asignado en el admin. Para un conector que no permite headers personalizados, configurá la URL con el ID existente en el panel, por ejemplo `https://TU-SITIO.netlify.app/mcp?clientId=30484546`. Esto conserva las asignaciones por usuario, pero no autentica: no uses IDs previsibles para exponer permisos sensibles.
 
 Netlify Blobs no requiere variables adicionales: la función crea los stores `cria-mcp-access` y `cria-mcp-audit` automáticamente. Mantienen la configuración y los últimos 200 eventos entre deploys.
 
