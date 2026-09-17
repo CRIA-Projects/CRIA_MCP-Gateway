@@ -23,6 +23,7 @@ export function createGateway(env: NodeJS.ProcessEnv = process.env, options: Gat
     router: new DemoToolRouter(),
     audit,
     access,
-    adminApiKey: env.ADMIN_API_KEY ?? (env.NETLIFY ? "" : "development-admin-key")
+    adminApiKey: env.ADMIN_API_KEY ?? (env.NETLIFY ? "" : "development-admin-key"),
+    mcpApiKey: env.MCP_GATEWAY_API_KEY ?? ""
   });
 }

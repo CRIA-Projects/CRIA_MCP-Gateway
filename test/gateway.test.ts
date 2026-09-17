@@ -15,6 +15,15 @@ test("health is publicly available while admin data requires its key", async () 
   assert.equal(config.status, 200);
 });
 
+test("an optional MCP_GATEWAY_API_KEY gates /mcp when configured", async () => {
+  const gateway = createGateway({ ADMIN_API_KEY: adminKey, MCP_GATEWAY_API_KEY: "secret-key" });
+  const denied = await gateway.handleRequest(rpc("/mcp", "ana", "server/discover"));
+  assert.equal(denied.status, 401);
+  const allowed = await gateway.handleRequest(rpc("/mcp", "ana", "server/discover", {}, { "x-api-key": "secret-key" }));
+  assert.equal(allowed.status, 200);
+});
+
+
 test("admin changes access rules and the gateway immediately enforces the current state", async () => {
   const gateway = app();
   await gateway.handleRequest(admin("/admin/users", "POST", { id: "clara", name: "Clara", enabled: true }));

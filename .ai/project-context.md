@@ -92,6 +92,8 @@
 
 ## [context.devops]
 
+- Local TLS: optional Compose `https` profile runs Caddy at `localhost:8443`; Node bridges trust its public root through `NODE_EXTRA_CA_CERTS`. Optional `MCP_GATEWAY_API_KEY` gates `/mcp` with `x-api-key`, but is not individual authentication and is unsupported by the current local bridge.
+
 - Customer onboarding and credential placement: `docs/conectar-mcps-y-claude.md` covers HUB setup, assignments, local Claude Desktop configuration on macOS/Windows, VPN troubleshooting and unverified client-ID limits. Installation/backup remain in `docs/self-hosted.md`.
 
 - Permanent edition branches: `main` for Netlify; `docker` for self-hosted Docker/SQLite. Docker PRs target `docker`, never a full-edition merge into `main`. Shared fixes are ported selectively. Repository default remains `main`.

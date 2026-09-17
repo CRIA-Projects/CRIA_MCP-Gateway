@@ -11,6 +11,7 @@ services:
       SQLITE_PATH: /data/gateway.sqlite
       ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY in .env.docker}
       MCP_GATEWAY_TRUSTED_CLIENT_ID: ${MCP_GATEWAY_TRUSTED_CLIENT_ID:-}
+      MCP_GATEWAY_API_KEY: ${MCP_GATEWAY_API_KEY:-}
     ports:
       - "${CRIA_BIND_ADDRESS:-127.0.0.1}:${CRIA_PORT:-8787}:8787"
     volumes:
@@ -29,5 +30,20 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  proxy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on:
+      - gateway
+    ports:
+      - "${CRIA_BIND_ADDRESS:-127.0.0.1}:${CRIA_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   gateway-data:
+  caddy-data:

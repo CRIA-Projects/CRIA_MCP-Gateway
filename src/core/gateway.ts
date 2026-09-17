@@ -7,7 +7,7 @@ import type { ToolRegistry } from "../registry/registry.js";
 import type { ToolRouter } from "../router/router.js";
 import { failure, success, type JsonRpcRequest, type JsonRpcResponse } from "./protocol.js";
 
-export interface GatewayDependencies { identity: IdentityResolver; policy: PolicyService; registry: ToolRegistry; router: ToolRouter; audit: AuditLog; access: AccessConfiguration; adminApiKey: string; }
+export interface GatewayDependencies { identity: IdentityResolver; policy: PolicyService; registry: ToolRegistry; router: ToolRouter; audit: AuditLog; access: AccessConfiguration; adminApiKey: string; mcpApiKey: string; }
 type Decision = "allowed" | "denied" | "error";
 interface Outcome { response: Response; decision: Decision; clientId?: string; mcpServerId?: string; errorCode?: number; }
 
@@ -19,6 +19,7 @@ export class GatewayApplication {
     if (request.method === "GET" && url.pathname === "/health") return Response.json({ status: "ok", service: "cria-mcp-gateway" });
     if (url.pathname.startsWith("/admin/")) return this.handleAdmin(request, url);
     if (request.method !== "POST" || url.pathname !== "/mcp") return Response.json({ error: "Not found" }, { status: 404 });
+    if (this.deps.mcpApiKey && request.headers.get("x-api-key") !== this.deps.mcpApiKey) return Response.json({ error: "MCP access denied" }, { status: 401 });
     let message: unknown;
     try { message = await request.json(); } catch { return this.auditAndReturn(request, undefined, undefined, undefined, this.rpcOutcome(failure(null, -32700, "Parse error"), "error")); }
     if (!isRequest(message)) return this.auditAndReturn(request, undefined, undefined, message, this.rpcOutcome(failure(null, -32600, "Invalid Request"), "error"));

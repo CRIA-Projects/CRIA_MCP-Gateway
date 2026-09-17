@@ -36,6 +36,27 @@ SQLite se crea automáticamente en `/data/gateway.sqlite`, dentro del volumen `g
 
 El tráfico directo en el puerto 8787 es HTTP. Para acceso directo debe viajar por una VPN cifrada y confiable; HTTPS con la CA corporativa es preferible. Verificá desde una máquina fuera de la VPN que no haya acceso. Las reglas de firewall deben contemplar la publicación de puertos de Docker.
 
+### HTTPS local para probar clientes MCP
+
+Algunos clientes MCP exigen `https://`. Para probarlo en local, el `compose.yaml` incluye un servicio opcional `proxy` (Caddy) con perfil `https`, que expone TLS con la CA interna autofirmada de Caddy en `CRIA_HTTPS_PORT` (por defecto `8443`):
+
+```sh
+docker compose --env-file .env.docker --profile https up -d --build --wait
+curl -k https://localhost:8443/health
+```
+
+Para el puente de Claude Desktop, copiá únicamente el certificado público de la CA a una ruta local estable:
+
+```sh
+docker compose --env-file .env.docker --profile https cp proxy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
+```
+
+En el `env` del puente configurá `CRIA_GATEWAY_URL=https://localhost:8443/mcp` y `NODE_EXTRA_CA_CERTS` con la ruta absoluta de ese archivo. Reiniciá Claude completamente para cargar el cambio. No desactives la validación TLS ni distribuyas la clave privada de la CA. El nombre `localhost` debe coincidir con el certificado; usar una IP en su lugar no funciona con este Caddyfile. Este HTTPS local no hace accesible el servidor desde los conectores remotos de Claude. Para producción, usá un certificado válido (Let's Encrypt o la CA corporativa) en lugar de `tls internal`.
+
+### API key para `/mcp`
+
+`MCP_GATEWAY_API_KEY` en `.env.docker` agrega, si se define, un segundo requisito además de `x-client-id`: cada request a `/mcp` debe incluir el header `x-api-key` con ese valor, o recibe `401`. Queda vacío por defecto (deshabilitado) para no romper instalaciones existentes; Es una barrera compartida adicional, no autenticación individual: no evita que alguien con esa clave cambie `x-client-id`. El puente local actual no envía `x-api-key`; dejá esta opción vacía si usás ese puente. No publiques el gateway como servicio empresarial sin resolver la identidad de cada usuario.
+
 El contenedor escucha en `0.0.0.0` internamente; la IP publicada se limita desde Compose. La VPN del host no garantiza automáticamente que un contenedor alcance las subredes internas: probar DNS, rutas y firewall desde el contenedor. No se habilita `network_mode: host` ni modo privilegiado. Se puede agregar `dns` o `extra_hosts` en un override administrado por el cliente.
 
 Los endpoints de MCPs registrados siguen requiriendo HTTPS. Para una CA privada, montá el certificado de CA como solo lectura y configurá `NODE_EXTRA_CA_CERTS` con su ruta dentro del contenedor. No desactives la validación TLS. El HUB usa fuentes e íconos externos como decoración: si la red no tiene salida, funcionan las fuentes de respaldo, pero esos recursos visuales pueden no cargar.

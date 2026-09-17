@@ -1,0 +1,7 @@
+# Local HTTPS termination for testing MCP clients that require https://.
+# Uses Caddy's internal CA (self-signed); trust the CA locally or pass -k when testing with curl.
+# Must be reached via the "localhost" SNI/Host (not a bare IP) so Caddy can match the issued certificate.
+localhost:8443 {
+	tls internal
+	reverse_proxy gateway:8787
+}
