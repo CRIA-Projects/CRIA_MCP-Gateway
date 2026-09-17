@@ -85,3 +85,7 @@ Netlify publica `public/` como panel estático y sus funciones redirigen `/mcp`,
 Seguí el [checklist de deploy en Netlify](docs/netlify-deploy.md), que incluye la prueba desde ChatGPT y el límite explícito del principal de prueba hasta incorporar OAuth/Supabase Auth.
 
 Más contexto en [docs/architecture.md](docs/architecture.md).
+
+## Credenciales en Docker/SQLite
+
+La edición self-hosted exige credenciales por usuario y dispositivo, emitidas/revocadas en el HUB. `x-client-id` solo permanece en el entorno de desarrollo/Netlify; no autentica Docker. El puente utiliza HTTPS y Llavero de macOS o Administrador de credenciales de Windows. Ver [instalación y migración](docs/self-hosted.md) y [provisión por Sistemas](docs/conectar-mcps-y-claude.md).

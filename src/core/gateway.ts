@@ -7,7 +7,9 @@ import type { ToolRegistry } from "../registry/registry.js";
 import type { ToolRouter } from "../router/router.js";
 import { failure, success, type JsonRpcRequest, type JsonRpcResponse } from "./protocol.js";
 
-export interface GatewayDependencies { identity: IdentityResolver; policy: PolicyService; registry: ToolRegistry; router: ToolRouter; audit: AuditLog; access: AccessConfiguration; adminApiKey: string; mcpApiKey: string; }
+import type { DeviceCredentials } from "../identity/credentials.js";
+
+export interface GatewayDependencies { credentials?: DeviceCredentials; identity: IdentityResolver; policy: PolicyService; registry: ToolRegistry; router: ToolRouter; audit: AuditLog; access: AccessConfiguration; adminApiKey: string; mcpApiKey: string; }
 type Decision = "allowed" | "denied" | "error";
 interface Outcome { response: Response; decision: Decision; clientId?: string; mcpServerId?: string; errorCode?: number; }
 
@@ -19,24 +21,27 @@ export class GatewayApplication {
     if (request.method === "GET" && url.pathname === "/health") return Response.json({ status: "ok", service: "cria-mcp-gateway" });
     if (url.pathname.startsWith("/admin/")) return this.handleAdmin(request, url);
     if (request.method !== "POST" || url.pathname !== "/mcp") return Response.json({ error: "Not found" }, { status: 404 });
-    if (this.deps.mcpApiKey && request.headers.get("x-api-key") !== this.deps.mcpApiKey) return Response.json({ error: "MCP access denied" }, { status: 401 });
+    if (!this.deps.credentials && this.deps.mcpApiKey && request.headers.get("x-api-key") !== this.deps.mcpApiKey) return Response.json({ error: "MCP access denied" }, { status: 401 });
     let message: unknown;
     try { message = await request.json(); } catch { return this.auditAndReturn(request, undefined, undefined, undefined, this.rpcOutcome(failure(null, -32700, "Parse error"), "error")); }
     if (!isRequest(message)) return this.auditAndReturn(request, undefined, undefined, message, this.rpcOutcome(failure(null, -32600, "Invalid Request"), "error"));
     const outcome = await this.dispatch(request, message);
-    const response = message.id === undefined ? new Response(null, { status: 202 }) : outcome.response;
+    const response = message.id === undefined && outcome.response.status === 200 ? new Response(null, { status: 202 }) : outcome.response;
     return this.auditAndReturn(request, outcome.clientId, outcome.mcpServerId, message, { ...outcome, response });
   }
 
   private async dispatch(request: Request, message: JsonRpcRequest): Promise<Outcome> {
     const id = message.id ?? null;
     const principal = await this.deps.identity.resolve(request);
+    if (!principal.id) {
+      return { response: Response.json(failure(id, -32003, "Invalid or expired device credential"), { status: 401, headers: { "cache-control": "no-store", "www-authenticate": "Bearer" } }), decision: "denied", errorCode: -32003 };
+    }
     const servers = await this.accessibleServers(principal);
     if (!servers.length) return this.rpcOutcome(failure(id, -32003, "MCP access denied"), "denied", principal.id);
     if (message.method === "server/discover") return { ...this.rpcOutcome(success(id, discoveryResult()), "allowed", principal.id), mcpServerId: "gateway" };
     if (message.method === "initialize") return { ...this.rpcOutcome(success(id, legacyInitializeResult()), "allowed", principal.id), mcpServerId: "gateway" };
-    if (message.method === "tools/list") return this.listTools(principal, servers, message, request.headers);
-    if (message.method === "tools/call") return this.callTool(principal, id, servers, message, request.headers);
+    if (message.method === "tools/list") return this.listTools(principal, servers, message, new Headers({ accept: "application/json, text/event-stream" }));
+    if (message.method === "tools/call") return this.callTool(principal, id, servers, message, new Headers({ accept: "application/json, text/event-stream" }));
     if (message.method === "notifications/initialized") return { ...this.rpcOutcome(success(id, {}), "allowed", principal.id), mcpServerId: "gateway" };
     return this.rpcOutcome(failure(id, -32601, "Method not found"), "error", principal.id);
   }
@@ -99,7 +104,7 @@ export class GatewayApplication {
   private async auditAndReturn(request: Request, clientId: string | undefined, mcpServerId: string | undefined, message: unknown, outcome: Outcome): Promise<Response> {
     const url = new URL(request.url);
     const rpc = isRequest(message) ? message : undefined;
-    const event: AuditEvent = { id: crypto.randomUUID(), at: new Date().toISOString(), httpMethod: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams), mcpServerId, clientId, rpcMethod: rpc?.method, rpcId: rpc?.id, params: sanitize(rpc?.params), headers: safeHeaders(request.headers), decision: outcome.decision, status: outcome.response.status, errorCode: outcome.errorCode };
+    const event: AuditEvent = { id: crypto.randomUUID(), at: new Date().toISOString(), httpMethod: request.method, path: url.pathname, query: sanitize(Object.fromEntries(url.searchParams)) as Record<string, string>, mcpServerId, clientId, rpcMethod: rpc?.method, rpcId: rpc?.id, params: sanitize(rpc?.params), headers: safeHeaders(request.headers), decision: outcome.decision, status: outcome.response.status, errorCode: outcome.errorCode };
     await this.deps.audit.record(event);
     return outcome.response;
   }
@@ -107,6 +112,27 @@ export class GatewayApplication {
   private async handleAdmin(request: Request, url: URL): Promise<Response> {
     if (!this.deps.adminApiKey || request.headers.get("x-admin-key") !== this.deps.adminApiKey) return Response.json({ error: "Admin access denied" }, { status: 401 });
     try {
+      if (request.method === "POST" && url.pathname === "/admin/test-user") {
+        const body = await objectBody(request);
+        if (Object.keys(body).some(key => key !== "userId")) throw new Error("Only userId is accepted; this diagnostic only lists tools");
+        const principal: Principal = { id: stringField(body, "userId"), kind: "client" };
+        const message: JsonRpcRequest = { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} };
+        const servers = await this.accessibleServers(principal);
+        const outcome = servers.length
+          ? await this.listTools(principal, servers, message, new Headers({ accept: "application/json, text/event-stream" }))
+          : this.rpcOutcome(failure(1, -32003, "MCP access denied"), "denied", principal.id);
+        return this.auditAndReturn(request, principal.id, "gateway", message, outcome);
+      }
+      if (request.method === "GET" && url.pathname === "/admin/auth") return this.adminJson({ mode: this.deps.credentials ? "device" : "development" });
+      if (url.pathname === "/admin/credentials" && this.deps.credentials) {
+        if (request.method === "GET") return this.adminJson({ credentials: await this.deps.credentials.list() });
+        if (request.method === "POST") {
+          const body = await objectBody(request);
+          return this.adminJson(await this.deps.credentials.issue(stringField(body, "userId"), stringField(body, "deviceName"), body.expiresInDays === undefined ? 90 : typeof body.expiresInDays === "number" ? body.expiresInDays : NaN), 201);
+        }
+      }
+      const credentialId = /^\/admin\/credentials\/([^/]+)$/.exec(url.pathname)?.[1];
+      if (credentialId && request.method === "DELETE" && this.deps.credentials) return this.deleteResult(await this.deps.credentials.revoke(credentialId));
       if (request.method === "GET" && url.pathname === "/admin/config") return this.adminJson(await this.deps.access.publicView());
       if (request.method === "GET" && url.pathname === "/admin/logs") return this.adminJson({ events: await this.deps.audit.list(Number(url.searchParams.get("limit") ?? 100)) });
       if (request.method === "GET" && url.pathname === "/admin/analytics") return this.adminJson(computeAnalytics(await this.deps.audit.list(200), await this.deps.access.publicView()));
@@ -114,10 +140,10 @@ export class GatewayApplication {
       if (request.method === "POST" && url.pathname === "/admin/servers") return this.adminJson(await this.deps.access.createMcpServer(await serverBody(request)), 201);
       if (request.method === "PUT" && url.pathname === "/admin/access") { const body = await objectBody(request); return this.adminJson({ granted: await this.deps.access.setAccess(stringField(body, "userId"), stringField(body, "mcpServerId"), Boolean(body.granted)) }); }
       const userId = /^\/admin\/users\/([^/]+)$/.exec(url.pathname)?.[1];
-      if (userId && request.method === "PATCH") return this.adminJson(awaitRequired(this.deps.access.updateUser(userId, await userUpdateBody(request))));
+      if (userId && request.method === "PATCH") return this.adminJson(await awaitRequired(this.deps.access.updateUser(userId, await userUpdateBody(request))));
       if (userId && request.method === "DELETE") return this.deleteResult(await this.deps.access.removeUser(userId));
       const serverId = /^\/admin\/servers\/([^/]+)$/.exec(url.pathname)?.[1];
-      if (serverId && request.method === "PATCH") return this.adminJson(awaitRequired(this.deps.access.updateMcpServer(serverId, await serverUpdateBody(request))));
+      if (serverId && request.method === "PATCH") return this.adminJson(await awaitRequired(this.deps.access.updateMcpServer(serverId, await serverUpdateBody(request))));
       if (serverId && request.method === "DELETE") return this.deleteResult(await this.deps.access.removeMcpServer(serverId));
       return Response.json({ error: "Not found" }, { status: 404 });
     } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Invalid admin request" }, { status: 400 }); }
@@ -166,6 +192,6 @@ const serverIcons = [
 ];
 function discoveryResult() { return { resultType: "complete", supportedVersions: ["2026-07-28"], capabilities: { tools: { listChanged: false } }, _meta: { "io.modelcontextprotocol/serverInfo": { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }, ttlMs: 0, cacheScope: "private" }; }
 function legacyInitializeResult() { return { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "cria-mcp-gateway", version: "0.3.0", icons: serverIcons } }; }
-function safeHeaders(headers: Headers) { return Object.fromEntries([...headers].map(([key, value]) => [key, /authorization|cookie|token|secret|api[-_]?key/i.test(key) ? "[redacted]" : truncate(value)])); }
-function sanitize(value: unknown): unknown { if (typeof value === "string") return truncate(value); if (Array.isArray(value)) return value.map(sanitize); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, /password|token|secret|authorization|api[-_]?key/i.test(key) ? "[redacted]" : sanitize(item)])); return value; }
-function truncate(value: string) { return value.length > 2000 ? `${value.slice(0, 2000)}…[truncated]` : value; }
+function safeHeaders(headers: Headers) { return Object.fromEntries([...headers].map(([key, value]) => [key, /authorization|cookie|token|secret|api[-_]?key|admin[-_]?key/i.test(key) ? "[redacted]" : truncate(value)])); }
+function sanitize(value: unknown): unknown { if (typeof value === "string") return truncate(value); if (Array.isArray(value)) return value.map(sanitize); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, /password|token|secret|authorization|api[-_]?key|admin[-_]?key/i.test(key) ? "[redacted]" : sanitize(item)])); return value; }
+function truncate(value: string) { value = value.replace(/cria_[a-f0-9]{64}/g, "[redacted]"); return value.length > 2000 ? `${value.slice(0, 2000)}…[truncated]` : value; }

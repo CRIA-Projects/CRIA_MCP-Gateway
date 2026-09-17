@@ -1,137 +1,87 @@
 # Conectar MCPs y usuarios de Claude a CRIA
 
-Instructivo para la edición permanente `docker`, instalada en una red privada o VPN. Para preparar el servidor, primero seguir [Instalación Docker + SQLite](self-hosted.md).
+Esta guía corresponde a Docker/SQLite con credenciales de dispositivo. Sistemas instala el puente bajo la sesión del empleado, conectado a la VPN. La URL es común; cada computadora recibe una credencial individual. El ID del usuario ya no autentica conexiones.
 
-## 1. Qué se conecta con qué
+## 1. Preparar el servidor
 
-Claude Desktop ejecuta el puente local de CRIA en la computadora del usuario. El puente envía el ID al gateway por la VPN. El gateway consulta las asignaciones del HUB y se conecta únicamente a los MCPs permitidos para ese usuario.
+Seguir [instalación y backups](self-hosted.md). Mantener el HTTP interno restringido a loopback/red de contenedores. Publicar únicamente HTTPS en la interfaz VPN mediante un proxy confiable. Para el entorno local usar Caddy en `https://localhost:8443`; en la empresa usar el hostname y certificado corporativo correspondientes.
 
-Se configura **una sola conexión CRIA en Claude**, no una por cada MCP interno. Todos los usuarios pueden usar la misma URL, terminada en `/mcp`; cambia su ID.
+Crear un usuario habilitado en el HUB, registrar los MCPs y asignarlos al usuario. Las claves de los MCPs internos se guardan exclusivamente en el servidor. No distribuir la clave administrativa del HUB.
 
-Los conectores remotos agregados por URL en Claude salen desde la nube de Anthropic, no desde la VPN de la computadora. Por eso este instructivo usa la configuración MCP local de Claude Desktop, no el formulario web de conectores. Esta configuración local no se traslada a claude.ai ni Cowork. [Documentación de Anthropic](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+## 2. Emitir una credencial
 
-## 2. Qué claves van en cada lugar
+En **Usuarios → Credenciales de dispositivos**:
+1. Elegir el usuario y nombrar la computadora.
+2. Elegir vigencia (90 días por defecto; máximo 365).
+3. Generar la credencial. La key se muestra una sola vez y no se puede recuperar después.
 
-| Dato | Quién lo proporciona | Dónde se coloca | ¿Va en Claude? |
-| --- | --- | --- | --- |
-| `ADMIN_API_KEY` | Administrador de la instalación | `.env.docker` del servidor y acceso administrativo al HUB | No |
-| Token o API key del MCP interno | Administrador/proveedor de ese MCP | Autenticación de ese MCP en el HUB | No |
-| URL del gateway | Administrador de CRIA | `CRIA_GATEWAY_URL` en la configuración local | Sí |
-| ID del usuario del HUB | Administrador de CRIA | `CRIA_CLIENT_ID` en la configuración local | Sí, pero no es una contraseña |
-| Credenciales VPN | Equipo de sistemas del cliente | Aplicación de VPN de la computadora/servidor | No |
+SQLite guarda únicamente el hash SHA-256 de una key aleatoria de 256 bits, junto con su usuario, etiqueta, vencimiento, último uso y revocación. No se derivan keys del ID ni de contraseñas humanas.
 
-No necesitás una API key de Anthropic para este puente: usás tu sesión normal de Claude Desktop. No pegues claves en el chat. Tampoco distribuyas `ADMIN_API_KEY` a los usuarios: permite administrar toda la instalación.
+## 3. Instalar el puente
 
-**Importante sobre “Client ID”:** `CRIA_CLIENT_ID` es una variable de nuestro puente, que genera el header HTTP `x-client-id`. No es el campo OAuth Client ID del formulario de conectores de Claude. Esta edición no implementa OAuth ni requiere un OAuth Client Secret. Si estás completando esos campos, no estás usando el procedimiento local de esta guía.
+En el HUB, dentro de **Usuarios → Credenciales de dispositivos → Instrucciones para Sistemas**, elegí macOS o Windows, completá la carpeta de instalación, URL HTTPS y perfil. El botón **Copiar comando** prepara la invocación para Terminal o PowerShell sin incluir la key. Usá exactamente la misma URL y perfil en Claude.
 
-## 3. Administrador: registrar los MCPs en el HUB
+Instalar Node 24 y copiar juntos, en una carpeta estable:
+- `scripts/claude-vpn-bridge.mjs`
+- `scripts/credential-store.mjs`
+- `scripts/enroll-device.mjs`
+- `scripts/windows-credential-store.ps1` (necesario en Windows)
 
-1. Conectate a la VPN y abrí el HUB en la URL que publicó sistemas, por ejemplo `https://cria.interno.example/`.
-2. Ingresá la clave administrativa configurada como `ADMIN_API_KEY` en el servidor.
-3. En **MCPs**, creá un MCP con nombre identificable, por ejemplo `A30`.
-4. Ingresá la URL HTTPS del endpoint MCP real, proporcionada por su administrador. No es la URL del panel de n8n ni una API REST cualquiera. El gateway no instala ni publica ese MCP por vos.
-5. Elegí la autenticación que realmente exige ese endpoint:
-   - **Ninguna:** solo si el MCP no exige credenciales.
-   - **Token Bearer:** cargá el token del MCP en el campo de autenticación. La petición al MCP debe llevar `Authorization: Bearer <token-del-mcp>`.
-   - **Header personalizado:** cargá el nombre exacto, por ejemplo `X-API-Key`, y el valor que te entregaron. No agregues `Bearer` si ese proveedor no lo pide.
-6. Guardá y repetí con los demás MCPs.
+No requieren `npm install`. Ejecutar el alta desde una terminal interactiva, bajo la cuenta del empleado (no otra cuenta administrativa):
 
-Usá credenciales con los permisos mínimos necesarios. No uses la clave administrativa de CRIA como token del MCP. Estas credenciales se guardan en SQLite y se usan desde el gateway; no se copian a la configuración de Claude. Un mismo registro MCP comparte su credencial upstream entre los usuarios autorizados: no hay login independiente de cada usuario en el proveedor.
+```sh
+node /ruta/CRIA/enroll-device.mjs https://cria.empresa.interna/mcp notebook
+```
 
-El servidor Docker debe poder alcanzar esos endpoints. Que tu navegador alcance un MCP no demuestra que el contenedor tenga sus rutas, DNS y certificados. La edición actual registra MCPs remotos HTTPS; no permite pegar un comando `npx` o `stdio` como URL en el HUB. Si el proveedor exige un flujo OAuth interactivo, esa integración no está resuelta por estos campos.
+Pegar la key en el campo oculto del terminal. Nunca pasarla como argumento, variable de entorno o archivo. El alta guarda la key en Llavero de macOS o Administrador de credenciales de Windows. Borrar el portapapeles después de instalar y cerrar el diálogo del HUB. La URL y el perfil identifican la credencial; cambiarlos requiere volver a darla de alta.
 
-## 4. Administrador: crear usuarios y asignar permisos
+Windows usa `CredWriteW` con persistencia local para la cuenta actual. Las políticas corporativas deben permitir el script PowerShell; si bloquean su ejecución, Sistemas debe firmarlo/autorizarlo, sin desactivar globalmente la política. [API de Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credwritew).
 
-1. En **Usuarios**, creá o seleccioná al usuario y dejalo habilitado.
-2. Copiá su **ID exacto** del HUB, no su nombre visible. Ejemplo ficticio: `usuario-ventas`.
-3. Asignale los MCPs que puede usar. Crear un MCP no lo habilita automáticamente para todos.
-4. En **Probar gateway público**, elegí ese mismo usuario y presioná **Listar tools**.
-5. Verificá en los logs que `clientId` coincida y que la respuesta incluya las herramientas esperadas.
+## 4. Configurar Claude Desktop
 
-Tres MCPs no necesariamente son tres herramientas: si Demo publica una, Análisis una y A30 tres, Claude debería recibir **cinco herramientas**, reunidas bajo la conexión CRIA. Los nombres pueden verse como `a30__Reporte_Resumen_Final`.
-
-Entregale a cada usuario solamente la URL del gateway, su ID y el archivo `scripts/claude-vpn-bridge.mjs` de esta rama. Si hay una CA corporativa, entregá también el certificado público de CA aprobado por sistemas; nunca su clave privada.
-
-## 5. Usuario: preparar la computadora
-
-1. Conectate a la VPN del cliente.
-2. Instalá Node.js 24 y comprobá `node --version` en una terminal.
-3. Guardá `claude-vpn-bridge.mjs` en una carpeta estable. No necesita `npm install` ni Docker en tu computadora.
-4. Obtené la ruta absoluta de Node: en macOS, `command -v node`; en PowerShell, `(Get-Command node).Source`.
-5. Pedile al administrador la URL privada y tu ID exacto. `localhost` o `127.0.0.1` apuntan a tu computadora, no al servidor remoto; usalos solo si tenés allí el gateway o un túnel configurado.
-
-## 6. Usuario: configurar Claude Desktop
-
-Abrí los ajustes de la aplicación de escritorio, **Developer / Desarrollador → Edit Config / Editar configuración**. El archivo suele estar en las siguientes ubicaciones; preferí abrirlo desde la aplicación si tu instalación usa otra ruta. [Guía oficial de MCP para Claude Desktop](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
-
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`.
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`.
-
-Hacé una copia de ese archivo antes de editarlo. Si ya tiene servidores u otras opciones, conserválos y agregá solamente `cria-vpn` dentro del objeto `mcpServers` existente. No crees dos claves `mcpServers`.
-
-### Ejemplo macOS
+En **Desarrollador → Editar configuración**, agregar dentro de `mcpServers` conservando las demás entradas:
 
 ```json
 {
   "mcpServers": {
-    "cria-vpn": {
-      "command": "/opt/homebrew/bin/node",
-      "args": ["/Users/ana/CRIA/claude-vpn-bridge.mjs"],
+    "cria": {
+      "command": "/ruta/absoluta/node",
+      "args": ["/ruta/CRIA/claude-vpn-bridge.mjs"],
       "env": {
-        "CRIA_GATEWAY_URL": "https://cria.interno.example/mcp",
-        "CRIA_CLIENT_ID": "usuario-ventas"
+        "CRIA_GATEWAY_URL": "https://cria.empresa.interna/mcp",
+        "CRIA_CREDENTIAL_PROFILE": "notebook",
+        "NODE_EXTRA_CA_CERTS": "/ruta/ca-corporativa.crt"
       }
     }
   }
 }
 ```
 
-### Ejemplo Windows
+Omitir `NODE_EXTRA_CA_CERTS` si el certificado ya es confiable para Node. En Windows usar rutas JSON como `C:\\Program Files\\nodejs\\node.exe`. En macOS, la configuración suele estar en `~/Library/Application Support/Claude/claude_desktop_config.json`; en Windows, `%APPDATA%\\Claude\\claude_desktop_config.json`.
 
-```json
-{
-  "mcpServers": {
-    "cria-vpn": {
-      "command": "C:\\Program Files\\nodejs\\node.exe",
-      "args": ["C:\\Users\\ana\\CRIA\\claude-vpn-bridge.mjs"],
-      "env": {
-        "CRIA_GATEWAY_URL": "https://cria.interno.example/mcp",
-        "CRIA_CLIENT_ID": "usuario-ventas"
-      }
-    }
-  }
-}
-```
+El puente requiere HTTPS, no acepta `CRIA_CLIENT_ID` como alternativa y no sigue redirecciones. Para Caddy local usar exactamente `https://localhost:8443/mcp` y la CA pública extraída según la guía de instalación. Reiniciar Claude completamente: [Node lee la CA al arrancar](https://nodejs.org/download/release/v22.4.0/docs/api/cli.html#node_extra_ca_certsfile).
 
-Los ejemplos tienen rutas y dominios ficticios: reemplazá `command` por la ruta que obtuviste, `args` por donde guardaste el archivo, la URL por la que te entregaron y el ID por el tuyo. Conservá las dobles barras de Windows para que el JSON sea válido. No uses `~` ni variables de terminal dentro de las rutas JSON.
+El formulario de conectores remotos no sirve para localhost/VPN: conecta desde Anthropic. La disponibilidad del MCP local en Cowork depende del cliente y las políticas de la organización; comprobarla en el equipo instalado.
 
-Si el gateway usa HTTPS con CA privada, sistemas debe agregar en `env` una propiedad `NODE_EXTRA_CA_CERTS` con la ruta absoluta al certificado de CA de esa computadora. No desactives la verificación TLS. Si sistemas publicó HTTP directamente sobre una VPN cifrada, usá la URL HTTP y puerto que te indiquen; cambiar `http` por `https` en el texto no configura TLS en el servidor.
+## 5. Validar y operar
 
-Guardá, cerrá completamente Claude Desktop y volvé a abrirlo. Buscá `cria-vpn` entre sus herramientas/conexiones locales y habilitá su uso cuando lo solicite. Si la organización bloquea servidores locales, sistemas debe autorizar este mecanismo. [Configuración y reinicio de servidores locales](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
+- Probar una herramienta de lectura de un MCP asignado. El tester de Logs permite seleccionar un usuario usando la autenticación administrativa del HUB: lista sus herramientas y registra una prueba administrativa. No comprueba la key ni la instalación del dispositivo, y no habilita identificación por ID en `/mcp`.
+- Revisar el último uso por dispositivo. Los permisos se consultan en cada llamada.
+- Revocar una credencial bloquea futuras solicitudes inmediatamente, sin afectar otros dispositivos. Una operación ya autorizada y en curso no se cancela.
+- Deshabilitar/eliminar al usuario revoca permanentemente todas sus credenciales. Reactivarlo/recrearlo requiere keys nuevas.
+- Para rotar: emitir nueva key, instalarla en el mismo perfil (reemplaza la anterior), probar y revocar la vieja.
+- Para desinstalar: revocar en el HUB, quitar la entrada de Claude y ejecutar `node enroll-device.mjs URL perfil delete` bajo la cuenta del empleado. Eliminarla del almacén local no la revoca en el servidor.
 
-## 7. Comprobar que funciona y actualizar permisos
+## Diagnóstico
 
-Pedile a Claude una operación de lectura concreta de un MCP que tengas asignado, por ejemplo consultar un reporte para una fecha; evitá acciones con efectos reales como primera prueba. Revisá y aprobá la llamada si corresponde. El administrador debe comprobar en los logs del HUB que la petición llegó con tu ID.
+| Error | Revisar |
+|---|---|
+| Fallo de inicio | Rutas, Node, archivos del puente, URL HTTPS, perfil y credencial en la cuenta correcta. |
+| Certificado no confiable | CA pública, hostname, `NODE_EXTRA_CA_CERTS` y reinicio completo. Nunca desactivar TLS. |
+| HTTP 401 | Key ausente, inválida, vencida, revocada o usuario deshabilitado. |
+| MCP access denied | Usuario autenticado sin MCPs asignados/accesibles. |
+| Herramientas faltantes | Asignaciones y disponibilidad/credenciales del upstream desde Docker. |
 
-Cuando se agregue otro MCP, el administrador lo registra, lo asigna al usuario y prueba el listado desde el HUB. **No se cambia la URL ni se agregan más claves en Claude.** El gateway evalúa los permisos vigentes en cada listado y llamada. Si Claude conserva el catálogo anterior, cerralo completamente, volvé a abrirlo y probá en una conversación nueva; no supongas que la pantalla se actualiza automáticamente. Una revocación se aplica en el gateway incluso si Claude todavía muestra una herramienta vieja.
+## Límite de seguridad
 
-## 8. Problemas frecuentes
-
-| Síntoma | Qué revisar |
-| --- | --- |
-| No aparece `cria-vpn` | JSON válido, rutas absolutas de Node y del archivo, permisos de servidores locales y reinicio completo de Claude. |
-| Error de conexión o timeout | VPN activa, URL y puerto correctos, DNS y rutas. Si no llega ningún log al HUB, revisar primero la conexión local. |
-| Error de certificado | CA corporativa en la computadora y/o contenedor, según cuál conexión falle. No usar opciones para ignorar TLS. |
-| `MCP access denied` | ID exacto, usuario habilitado y asignaciones. Con la configuración Docker predeterminada, sin ID se deniega el acceso. |
-| Aparecen solo algunas herramientas | Comparar `tools/list` del HUB para el mismo usuario, revisar avisos de MCPs fallidos y logs; comprobar token y disponibilidad del upstream desde el servidor. Luego reiniciar Claude si su catálogo quedó viejo. |
-| 401/403 de un MCP interno | Credencial y modalidad de autenticación de ese MCP en el HUB, no la clave de Claude. |
-| No puedo administrar el HUB | Revisar `ADMIN_API_KEY` de esa instalación; el ID de usuario no sirve como clave administrativa. |
-| El MCP funciona en otra computadora | Comparar ID, permisos, ruta del puente, VPN y CA. No copiar claves administrativas como solución. |
-
-Para problemas del puente, consultar los logs MCP de Claude: `~/Library/Logs/Claude` en macOS o `%APPDATA%\Claude\logs` en Windows. Buscar `mcp.log` y `mcp-server-cria-vpn.log`. Antes de compartir logs, revisar y ocultar información sensible. [Ubicación de logs y diagnóstico](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
-
-## 9. Límites de seguridad de esta edición
-
-`CRIA_CLIENT_ID` / `x-client-id` identifica la configuración declarada por el cliente, no autentica a una persona: quien pueda editarla puede indicar otro ID. Las asignaciones filtran herramientas, pero el ID por sí solo no sirve como control de identidad frente a usuarios no confiables. Para ese escenario hay que incorporar autenticación verificada antes de distribuirlo como solución segura multiusuario.
-
-El gateway y SQLite quedan en la red privada; eso no convierte Claude en un modelo offline. Las herramientas pueden devolver información a Claude y, por lo tanto, a Anthropic. Sistemas debe aprobar qué datos pueden salir y qué acciones permite cada MCP. Mantener el HUB restringido a administradores y proteger la base y sus backups, que contienen credenciales de los MCPs.
+Una key copiada se puede reutilizar hasta su revocación. El nombre del dispositivo no es una atestación de hardware. El almacén del sistema evita secretos en el JSON, pero no protege de malware o de un administrador del equipo. SSO, MFA y claves no exportables quedan fuera de esta etapa. La VPN no hace offline a Claude: los resultados de herramientas pueden llegar al proveedor del modelo.

@@ -42,6 +42,8 @@
 
 ## [context.backend]
 
+- Docker/SQLite v2 authenticates Bearer device credentials through `DeviceCredentials`; ignores client-supplied IDs and legacy shared API keys. The service/store ports are provider-independent; SQLite is wired only in standalone. Admin lifecycle at `/admin/credentials`, capabilities at `/admin/auth`. Netlify/development retain LocalIdentityResolver.
+
 - Self-hosted branch: `src/platform/standalone.ts` wires SQLite only when `SQLITE_PATH` is set. New SQLite instances use empty seed and no fallback user; require admin keys >=32 characters. Production standalone refuses memory-only persistence. HTTP edge catches request failures and drains on SIGTERM/SIGINT. Netlify composition remains separate.
 
 - Language + runtime: TypeScript 5.8+, Node.js >=22, ESM / NodeNext, strict compiler settings.
@@ -57,6 +59,10 @@
 
 ## [context.frontend]
 
+- Device section includes IT enrollment instructions and a command generator for macOS Terminal/Windows PowerShell. URL/folder/profile are editable, shell-quoted, and never include the secret. HTTPS URL validation matches the bridge.
+
+- Device-auth HUB has issue/list/revoke controls under Users, a one-time secret dialog cleared on close, and an admin-authenticated user permissions tester at `/admin/test-user` (tools/list only, explicitly labeled in audit). Mode is discovered via authenticated `/admin/auth`.
+
 - Framework + version: dependency-free static HTML/CSS/JavaScript admin panel in `public/`.
 - State management: admin API key is held in session storage; current configuration is fetched after each mutation.
 - Routing: `/` serves the panel; `/mcp`, `/admin/*`, and `/health` are handled by the application; `netlify.toml` redirects dynamic endpoints to functions in deployment. MCP IDs are administrative/internal only. The dashboard is split into three client-side tabs (Usuarios / MCPs / Logs, toggled via `[hidden]` on `[data-tab-panel]`, no router) instead of one long scrolling page.
@@ -68,6 +74,8 @@
 - Build tooling: static assets need no build; TypeScript compiler builds the gateway.
 
 ## [context.data]
+
+- Schema v2 adds `device_credentials` (SHA-256 hashes only, metadata/expiry/revocation). Atomic user disable/delete revokes all user keys; reactivation never revives them. Backup before migration; old images require restoration of v1 backup, not direct downgrade.
 
 - Self-hosted SQLite: Node 24 `node:sqlite`, schema v1 managed transactionally in `src/platform/sqlite/database.ts`, local disk + WAL + FULL sync + 5s busy timeout. One JSON access row, individual audit event rows (latest 200). Optional atomic storage operations prevent read-modify-write losses in SQLite without changing existing Supabase/Blob adapters. Backup via SQLite backup API; rollback uses a restored snapshot and previous image. Single instance, no shared network filesystem.
 
@@ -92,7 +100,9 @@
 
 ## [context.devops]
 
-- Local TLS: optional Compose `https` profile runs Caddy at `localhost:8443`; Node bridges trust its public root through `NODE_EXTRA_CA_CERTS`. Optional `MCP_GATEWAY_API_KEY` gates `/mcp` with `x-api-key`, but is not individual authentication and is unsupported by the current local bridge.
+- Device bridge now requires HTTPS and native OS credentials bound to endpoint/profile. Enrollment: `scripts/enroll-device.mjs`; macOS security CLI via stdin, Windows CredWrite/CredRead helper. HTTP publication is loopback-only; expose TLS proxy on VPN. Native tests opt in with `CRIA_TEST_NATIVE_STORE=1`; CI includes macOS/Windows jobs.
+
+- Local TLS: optional Compose `https` profile runs Caddy at `localhost:8443`; Node bridges trust its public root through `NODE_EXTRA_CA_CERTS`. The older optional shared-key gate is retained only for non-SQLite compositions.
 
 - Customer onboarding and credential placement: `docs/conectar-mcps-y-claude.md` covers HUB setup, assignments, local Claude Desktop configuration on macOS/Windows, VPN troubleshooting and unverified client-ID limits. Installation/backup remain in `docs/self-hosted.md`.
 

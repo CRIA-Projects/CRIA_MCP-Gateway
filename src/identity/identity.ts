@@ -1,6 +1,7 @@
 export interface Principal {
   id: string;
   kind: "client" | "service";
+  credentialId?: string;
 }
 
 export interface IdentityResolver {

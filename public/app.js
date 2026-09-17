@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const message = $("#message"), dashboard = $("#dashboard");
-let config, editingUserId, editingServerId;
+let config, editingUserId, editingServerId, deviceAuth = false;
 const key = () => sessionStorage.getItem("cria-admin-key") || "";
 const headers = () => ({ "content-type": "application/json", "x-admin-key": key() });
 const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[c]);
@@ -8,9 +8,10 @@ function showMessage(text, isError = true) { message.textContent = text; message
 function clearMessage() { message.hidden = true; }
 async function withLoading(button, run) { if (!button) return run(); button.disabled = true; button.classList.add("is-loading"); try { return await run(); } finally { button.disabled = false; button.classList.remove("is-loading"); } }
 async function api(path, options = {}) { const response = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } }); const body = response.status === 204 ? undefined : await response.json().catch(() => undefined); if (!response.ok) throw new Error(body?.error || `Error ${response.status}`); return body; }
-async function refresh() { config = await api("/admin/config", { headers: { accept: "application/json" } }); render(); await Promise.all([refreshLogs(), refreshAnalytics()]); dashboard.hidden = false; }
+async function refresh() { config = await api("/admin/config", { headers: { accept: "application/json" } }); deviceAuth = (await api("/admin/auth")).mode === "device"; render(); await Promise.all([refreshLogs(), refreshAnalytics(), refreshDevices()]); dashboard.hidden = false; }
 function options(items, label) { return items.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(label(item))}</option>`).join(""); }
 function render() {
+  $("#device-section").hidden = !deviceAuth;
   const users = new Map(config.users.map((item) => [item.id, item])); const servers = new Map(config.mcpServers.map((item) => [item.id, item]));
   $("#user-count").textContent = `${config.users.filter((user) => user.enabled).length}/${config.users.length} habilitados`;
   $("#mcp-count").textContent = `${config.mcpServers.length} registrados`;
@@ -20,7 +21,7 @@ function render() {
   document.querySelectorAll('select[name="userId"]').forEach((select) => select.innerHTML = options(config.users, (user) => `${user.name}${user.enabled ? "" : " (deshabilitado)"}`));
   document.querySelectorAll('select[name="mcpServerId"]').forEach((select) => select.innerHTML = options(config.mcpServers, (server) => server.name));
 }
-async function refreshLogs() { const { events } = await api("/admin/logs?limit=100"); $("#log-list").innerHTML = events.map((event) => `<details class="log"><summary><span class="tag ${event.decision}">${escapeHtml(event.decision)}</span> <strong>${escapeHtml(event.rpcMethod || "invalid request")}</strong> <span>${escapeHtml(event.clientId || "unknown user")} → ${escapeHtml(event.mcpServerId || "unknown MCP")}</span><time>${new Date(event.at).toLocaleString()}</time></summary><pre>${escapeHtml(JSON.stringify(event, null, 2))}</pre></details>`).join("") || "<p class=\"muted\">Todavía no llegaron requests al gateway.</p>"; }
+async function refreshLogs() { const { events } = await api("/admin/logs?limit=100"); $("#log-list").innerHTML = events.map((event) => `<details class="log"><summary><span class="tag ${event.decision}">${escapeHtml(event.decision)}</span> <strong>${event.path === "/admin/test-user" ? "Prueba administrativa · " : ""}${escapeHtml(event.rpcMethod || "invalid request")}</strong> <span>${escapeHtml(event.clientId || "unknown user")} → ${escapeHtml(event.mcpServerId || "unknown MCP")}</span><time>${new Date(event.at).toLocaleString()}</time></summary><pre>${escapeHtml(JSON.stringify(event, null, 2))}</pre></details>`).join("") || "<p class=\"muted\">Todavía no llegaron requests al gateway.</p>"; }
 const dash = (value) => value === undefined || value === null || value === "" ? "—" : escapeHtml(String(value));
 const when = (iso) => iso ? new Date(iso).toLocaleString() : "—";
 async function refreshAnalytics() {
@@ -53,7 +54,79 @@ $("#login-form").addEventListener("submit", async (event) => { event.preventDefa
 $("#user-form").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const body = { id: data.get("id"), name: data.get("name"), enabled: data.has("enabled") }; try { await withLoading(event.submitter, () => api(editingUserId ? `/admin/users/${editingUserId}` : "/admin/users", { method: editingUserId ? "PATCH" : "POST", body: JSON.stringify(editingUserId ? { name: body.name, enabled: body.enabled } : body) })); resetUser(); await refresh(); showMessage("Usuario guardado.", false); } catch (error) { showMessage(error.message); } });
 $("#server-form").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const authType = data.get("authType"); const authValue = (data.get("authValue") || "").trim(); const authorizationHeader = authType === "none" || !authValue ? undefined : authType === "bearer" ? `Bearer ${authValue}` : authValue; const authHeaderName = authType === "header" && authValue ? (data.get("authHeaderName") || undefined) : undefined; const body = { id: data.get("id"), name: data.get("name"), kind: data.get("kind"), endpoint: data.get("endpoint") || undefined, authorizationHeader, authHeaderName }; try { await withLoading(event.submitter, () => api(editingServerId ? `/admin/servers/${editingServerId}` : "/admin/servers", { method: editingServerId ? "PATCH" : "POST", body: JSON.stringify(editingServerId ? { name: body.name, kind: body.kind, endpoint: body.endpoint, authorizationHeader: body.authorizationHeader, authHeaderName: body.authHeaderName } : body) })); resetServer(); await refresh(); showMessage("MCP guardado.", false); } catch (error) { showMessage(error.message); } });
 $("#access-form").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const granted = event.submitter?.value !== "false"; try { await withLoading(event.submitter, () => api("/admin/access", { method: "PUT", body: JSON.stringify({ userId: data.get("userId"), mcpServerId: data.get("mcpServerId"), granted }) })); await refresh(); showMessage(granted ? "Acceso habilitado." : "Acceso revocado.", false); } catch (error) { showMessage(error.message); } });
-$("#access-tester").addEventListener("submit", async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); await withLoading(event.submitter, async () => { const response = await fetch("/mcp", { method: "POST", headers: { "content-type": "application/json", "x-client-id": data.get("userId") }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) }); $("#test-result").textContent = JSON.stringify({ httpStatus: response.status, ...(await response.json()) }, null, 2); await refreshLogs(); }); });
+$("#access-tester").addEventListener("submit", async event => {
+  event.preventDefault();
+  const userId = new FormData(event.currentTarget).get("userId");
+  try {
+    await withLoading(event.submitter, async () => {
+      const result = await api("/admin/test-user", { method: "POST", body: JSON.stringify({ userId }) });
+      $("#test-result").textContent = JSON.stringify(result, null, 2);
+      await Promise.all([refreshLogs(), refreshAnalytics()]);
+    });
+  } catch (error) { $("#test-result").textContent = error.message; showMessage(error.message); }
+});
 document.addEventListener("click", async (event) => { const target = event.target; if (!(target instanceof HTMLButtonElement)) return; const user = target.dataset.editUser || target.dataset.deleteUser; const server = target.dataset.editServer || target.dataset.deleteServer; try { if (target.dataset.editUser) { const value = config.users.find((item) => item.id === user); editingUserId = user; $("#user-form-title").textContent = `Editar ${value.name}`; $("#user-form [name=id]").value = value.id; $("#user-form [name=id]").disabled = true; $("#user-form [name=name]").value = value.name; $("#user-form [name=enabled]").checked = value.enabled; $("#cancel-user").hidden = false; } if (target.dataset.deleteUser && confirm(`Eliminar ${user}?`)) { await withLoading(target, () => api(`/admin/users/${user}`, { method: "DELETE" })); await refresh(); } if (target.dataset.editServer) { const value = config.mcpServers.find((item) => item.id === server); editingServerId = server; $("#server-form-title").textContent = `Editar ${value.name}`; ["id", "name", "kind", "endpoint"].forEach((name) => $("#server-form [name=" + name + "]").value = value[name] || ""); let authType = "none", authValue = ""; if (value.authorizationHeader) { if (!value.authHeaderName && value.authorizationHeader.startsWith("Bearer ")) { authType = "bearer"; authValue = value.authorizationHeader.slice(7); } else { authType = "header"; authValue = value.authorizationHeader; } } $("#server-form [name=authType]").value = authType; $("#server-form [name=authValue]").value = authValue; $("#server-form [name=authHeaderName]").value = value.authHeaderName || ""; toggleAuthFields(); $("#cancel-server").hidden = false; } if (target.dataset.deleteServer && confirm(`Eliminar ${server}?`)) { await withLoading(target, () => api(`/admin/servers/${server}`, { method: "DELETE" })); await refresh(); } } catch (error) { showMessage(error.message); } });
 $("#cancel-user").addEventListener("click", resetUser); $("#cancel-server").addEventListener("click", resetServer); $("#server-form [name=authType]").addEventListener("change", toggleAuthFields); $("#refresh-logs").addEventListener("click", (event) => withLoading(event.currentTarget, () => refreshLogs()).catch((error) => showMessage(error.message)));
 if (key()) refresh().catch((error) => { sessionStorage.removeItem("cria-admin-key"); showMessage(error.message); });
+
+async function refreshDevices() {
+  if (!deviceAuth) return;
+  const { credentials } = await api("/admin/credentials");
+  $("#device-list").innerHTML = credentials.map(c => {
+    const status = c.revokedAt ? "Revocada" : Date.parse(c.expiresAt) <= Date.now() ? "Vencida" : "Activa";
+    return `<article class="card"><h3>${escapeHtml(c.deviceName)}</h3><p>Usuario: ${escapeHtml(c.userId)} · ${status}</p><p>Creada: ${escapeHtml(when(c.createdAt))}</p><p>Vence: ${escapeHtml(when(c.expiresAt))}</p><p>Último uso: ${escapeHtml(when(c.lastUsedAt))}</p>${!c.revokedAt ? `<button class="danger" data-revoke-device="${escapeHtml(c.id)}">Revocar</button>` : ""}</article>`;
+  }).join("") || '<p class="muted">No hay credenciales de dispositivos.</p>';
+}
+$("#device-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const data = new FormData(event.currentTarget);
+  try {
+    await withLoading(event.submitter, async () => {
+      const result = await api("/admin/credentials", { method: "POST", body: JSON.stringify({ userId: data.get("userId"), deviceName: data.get("deviceName"), expiresInDays: Number(data.get("expiresInDays")) }) });
+      $("#issued-token").value = result.token;
+      $("#credential-dialog").showModal();
+      await refreshDevices();
+    });
+  } catch (error) { showMessage(error.message); }
+});
+$("#close-credential").addEventListener("click", () => { $("#issued-token").value = ""; $("#credential-dialog").close(); });
+$("#credential-dialog").addEventListener("cancel", () => { $("#issued-token").value = ""; });
+$("#credential-dialog").addEventListener("close", () => { $("#issued-token").value = ""; });
+window.addEventListener("pagehide", () => { $("#issued-token").value = ""; });
+$("#device-list").addEventListener("click", async event => {
+  const id = event.target.dataset?.revokeDevice;
+  if (!id || !confirm("¿Revocar esta credencial? Esa computadora dejará de tener acceso inmediatamente.")) return;
+  try { await withLoading(event.target, () => api(`/admin/credentials/${encodeURIComponent(id)}`, { method: "DELETE" })); await refreshDevices(); }
+  catch (error) { showMessage(error.message); }
+});
+
+function updateInstallCommand() {
+  const windows = $("#install-os").value === "windows";
+  const folder = $("#install-folder").value.trim();
+  const profile = $("#install-profile").value.trim();
+  const rawUrl = $("#install-url").value.trim();
+  const command = $("#install-command");
+  $("#copy-install-command").disabled = true;
+  command.value = "";
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "https:" || url.pathname !== "/mcp" || url.username || url.password || url.search || url.hash) throw new Error();
+    if (!folder || /[\r\n\0]/.test(folder) || !/^[a-zA-Z0-9_-]{1,64}$/.test(profile)) throw new Error();
+    const path = folder.replace(/[\\/]+$/, "") + (windows ? "\\" : "/") + "enroll-device.mjs";
+    const quote = value => "'" + (windows ? value.replaceAll("'", "''") : value.replaceAll("'", "'\\''")) + "'";
+    command.value = `node ${quote(path)} ${quote(url.href)} ${quote(profile)}`;
+    $("#copy-install-command").disabled = false;
+    $("#install-feedback").textContent = "La key se pega después, en el campo oculto del terminal.";
+  } catch { $("#install-feedback").textContent = "Completá la carpeta, la URL HTTPS terminada en /mcp y un perfil sin espacios."; }
+}
+$("#install-os").addEventListener("change", () => {
+  $("#install-folder").value = $("#install-os").value === "windows" ? "C:\\CRIA" : "/Users/usuario/CRIA";
+  updateInstallCommand();
+});
+for (const id of ["install-folder", "install-url", "install-profile"]) $("#" + id).addEventListener("input", updateInstallCommand);
+$("#copy-install-command").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("#install-command").value); $("#install-feedback").textContent = "Comando copiado. Ejecutalo en la computadora del empleado."; }
+  catch { $("#install-command").focus(); $("#install-command").select(); $("#install-feedback").textContent = "Copiá el texto seleccionado con ⌘C o Ctrl+C."; }
+});
+if (location.protocol === "https:") $("#install-url").value = location.origin + "/mcp";
+updateInstallCommand();

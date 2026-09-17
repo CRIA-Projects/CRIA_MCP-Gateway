@@ -229,3 +229,5 @@ Bootstrap command:
 - Keep `src/core/` transport- and provider-agnostic; wire concrete adapters only in `src/bootstrap.ts` or transport edges.
 - Preserve deny-by-default authorization and treat `LocalIdentityResolver` as development-only until a real identity adapter is specified.
 - Do not expand the MVP with persistence, OAuth, upstream proxying, dashboards, or microservices without a reviewed specification.
+
+- Docker device authentication is specified in `specs/features/device-credentials/`. Never reintroduce client-ID fallback in SQLite composition. Device tokens stay hashed in storage and in OS credential stores on clients; user disable/delete permanently revokes them. HTTP stays loopback-only behind HTTPS.

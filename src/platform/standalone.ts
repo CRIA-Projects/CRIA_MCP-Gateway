@@ -2,6 +2,8 @@ import { PersistentAccessConfiguration, type PublicGatewayConfiguration } from "
 import { PersistentAuditLog } from "../audit/audit.js";
 import { createGateway } from "../bootstrap.js";
 
+import { DeviceCredentials } from "../identity/credentials.js";
+
 const emptySeed: PublicGatewayConfiguration = { users: [], mcpServers: [], assignments: [] };
 
 export async function createStandaloneRuntime(env: NodeJS.ProcessEnv = process.env) {
@@ -18,7 +20,7 @@ export async function createStandaloneRuntime(env: NodeJS.ProcessEnv = process.e
       const access = new PersistentAccessConfiguration(persistence.access, emptySeed);
       await access.publicView();
       const app = createGateway({ ...env, MCP_GATEWAY_TRUSTED_CLIENT_ID: env.MCP_GATEWAY_TRUSTED_CLIENT_ID ?? "" }, {
-        access, audit: new PersistentAuditLog(persistence.audit)
+        access, audit: new PersistentAuditLog(persistence.audit), credentials: new DeviceCredentials(persistence.credentials, access)
       });
       return { app, close: () => persistence.close() };
     } catch (error) { persistence.close(); throw error; }

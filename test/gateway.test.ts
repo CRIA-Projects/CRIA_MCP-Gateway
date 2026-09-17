@@ -259,3 +259,21 @@ test("internal MCP IDs are not public paths", async () => {
   assert.equal((await gateway.handleRequest(rpc("/mcp/missing", "ana", "tools/list"))).status, 404);
   assert.equal((await gateway.handleRequest(rpc("/mcp/demo", "ana", "tools/list"))).status, 404);
 });
+
+
+test("administrative user diagnostic requires admin auth, applies permissions and only lists tools", async () => {
+  const gateway = app();
+  const unauthorized = await gateway.handleRequest(new Request("http://localhost/admin/test-user", { method: "POST", headers: { "x-client-id": "ana" }, body: JSON.stringify({ userId: "ana" }) }));
+  assert.equal(unauthorized.status, 401);
+  const allowed = await gateway.handleRequest(admin("/admin/test-user", "POST", { userId: "ana" }));
+  assert.deepEqual((await allowed.json()).result.tools.map((tool: { name: string }) => tool.name), ["demo__demo.echo"]);
+  for (const userId of ["invitado", "missing"]) {
+    const denied = await gateway.handleRequest(admin("/admin/test-user", "POST", { userId }));
+    assert.equal((await denied.json()).error.code, -32003);
+  }
+  assert.equal((await gateway.handleRequest(admin("/admin/test-user", "POST", { userId: "ana", method: "tools/call" }))).status, 400);
+  const logs = await (await gateway.handleRequest(admin("/admin/logs"))).json();
+  const event = logs.events.find((event: { path: string; clientId: string }) => event.path === "/admin/test-user" && event.clientId === "ana");
+  assert.equal(event.rpcMethod, "tools/list");
+  assert.equal(event.headers["x-admin-key"], "[redacted]");
+});

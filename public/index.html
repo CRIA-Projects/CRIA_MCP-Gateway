@@ -53,6 +53,37 @@
 
         <section aria-labelledby="users-title"><div class="section-heading"><div><p class="eyebrow">IDENTIDAD</p><h2 id="users-title">Usuarios</h2></div><span id="user-count" class="count"></span></div><div id="user-list" class="card-grid"></div></section>
 
+        <section id="device-section" class="panel" hidden aria-labelledby="device-title">
+          <div class="panel-heading"><p class="eyebrow">SEGURIDAD</p><h2 id="device-title">Credenciales de dispositivos</h2></div>
+          <p>Generá una credencial por usuario y computadora. Al deshabilitar un usuario se revocan todas sus credenciales.</p>
+          <form id="device-form">
+            <label>Usuario <select name="userId" required></select></label>
+            <label>Computadora <input name="deviceName" required maxlength="100" placeholder="Notebook de Boni"/></label>
+            <label>Vigencia en días <input name="expiresInDays" type="number" min="1" max="365" value="90" required/></label>
+            <button>Generar credencial</button>
+          </form>
+          <details id="install-guide">
+            <summary>Instrucciones para Sistemas · Instalar en una computadora</summary>
+            <p>Instalá Node 24 y copiá juntos los archivos <code>claude-vpn-bridge.mjs</code>, <code>credential-store.mjs</code>, <code>enroll-device.mjs</code> y <code>windows-credential-store.ps1</code> desde la carpeta scripts del proyecto.</p>
+            <label>Sistema operativo <select id="install-os"><option value="mac">macOS · Terminal</option><option value="windows">Windows · PowerShell</option></select></label>
+            <label>Carpeta donde copiaste los archivos <input id="install-folder" value="/Users/usuario/CRIA" autocomplete="off"/></label>
+            <label>URL HTTPS de CRIA <input id="install-url" type="url" placeholder="https://cria.empresa.interna/mcp" autocomplete="off"/></label>
+            <p class="muted">Usá la dirección accesible desde la computadora del empleado. localhost solo sirve si Docker está en esa misma computadora.</p>
+            <label>Perfil de credencial <input id="install-profile" value="notebook" pattern="[a-zA-Z0-9_-]{1,64}" autocomplete="off"/></label>
+            <label>Comando para ejecutar <textarea id="install-command" readonly rows="4" spellcheck="false"></textarea></label>
+            <button id="copy-install-command" type="button" class="secondary">Copiar comando</button>
+            <p id="install-feedback" role="status" aria-live="polite"></p>
+            <ol>
+              <li>Ejecutá el comando en Terminal o PowerShell, bajo la sesión del empleado.</li>
+              <li>Cuando aparezca <code>Device key (hidden):</code>, pegá la key recién generada y presioná Enter. No aparecerán caracteres.</li>
+              <li>En Claude, configurá <code>CRIA_GATEWAY_URL</code> y <code>CRIA_CREDENTIAL_PROFILE</code> con la misma URL y perfil indicados arriba. Agregá la CA pública si el certificado es corporativo.</li>
+              <li>Cerrá y abrí Claude, probá una herramienta y revocá la credencial anterior si estás renovándola.</li>
+            </ol>
+            <p>El comando no incluye la key. macOS la guarda en el Llavero; Windows, en el Administrador de credenciales. Las políticas de PowerShell deben permitir el script; pedí su autorización a Sistemas si está bloqueado.</p>
+          </details>
+          <div id="device-list" class="card-grid"></div>
+        </section>
+
         <section aria-labelledby="user-analytics-title"><div class="section-heading"><div><p class="eyebrow">ANALÍTICA</p><h2 id="user-analytics-title">Actividad por usuario</h2></div></div><p class="muted">Calculado sobre los últimos <span id="analytics-sample-size">0</span> requests registrados en el gateway.</p><div class="table-scroll"><table class="analytics-table"><thead><tr><th>Usuario</th><th>Requests</th><th>Permitidos</th><th>Denegados</th><th>Errores</th><th>MCP más usado</th><th>Última actividad</th></tr></thead><tbody id="user-analytics-body"></tbody></table></div></section>
       </div>
 
@@ -68,13 +99,20 @@
       </div>
 
       <div class="tab-panel" data-tab-panel="logs" hidden>
-        <section class="tester" aria-labelledby="tester-title"><div><p class="eyebrow">PRUEBA LOCAL</p><h2 id="tester-title">Probar gateway público</h2><p>Envía <code>tools/list</code> a <code>/mcp</code>. Los MCPs internos no forman parte de la URL.</p></div><form id="access-tester"><label>Usuario <select name="userId"></select></label><button>Listar tools <span aria-hidden="true">→</span></button></form><pre id="test-result" aria-live="polite">Esperando una prueba.</pre></section>
+        <section class="tester" aria-labelledby="tester-title"><div><p class="eyebrow">PRUEBA ADMINISTRATIVA</p><h2 id="tester-title">Probar permisos por usuario</h2><p>Seleccioná un usuario para listar sus herramientas con los permisos actuales. Esta prueba usa tu acceso de administrador; no verifica la credencial ni la instalación del dispositivo.</p></div><form id="access-tester"><label id="tester-user">Usuario <select name="userId"></select></label><button>Listar tools <span aria-hidden="true">→</span></button></form><pre id="test-result" aria-live="polite">Esperando una prueba.</pre></section>
 
         <section aria-labelledby="logs-title"><div class="section-heading"><div><p class="eyebrow">OBSERVABILIDAD</p><h2 id="logs-title">Lo que llegó al gateway</h2></div><button class="secondary" id="refresh-logs">Actualizar logs</button></div><p class="muted">Headers y campos sensibles aparecen redactados. Los eventos más recientes se muestran primero.</p><div id="log-list" class="logs"></div></section>
       </div>
     </div>
   </main>
   <footer class="site-footer"><div><strong>CRIA</strong><span>INTELIGENCIA &amp; TRANSFORMACIÓN</span></div></footer>
+  <dialog id="credential-dialog" aria-labelledby="credential-title">
+    <h2 id="credential-title">Credencial generada</h2>
+    <p>Se muestra una sola vez. Sistemas debe guardarla con el instalador del puente en la computadora del usuario.</p>
+    <label>Key <input id="issued-token" readonly autocomplete="off" spellcheck="false"/></label>
+    <p>Si perdés esta key, revocala y generá otra.</p>
+    <button id="close-credential" type="button">Ya la guardé · Cerrar</button>
+  </dialog>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

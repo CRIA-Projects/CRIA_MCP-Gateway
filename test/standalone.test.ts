@@ -8,7 +8,7 @@ import test from "node:test";
 
 const key = "standalone-integration-admin-key-not-production";
 
-test("standalone HTTP process and VPN bridge retain assignments and audit through a process restart", { timeout: 20000 }, async (t) => {
+test("standalone HTTP retains device credentials, assignments and audit through a process restart", { timeout: 20000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "cria-http-"));
   const children: ChildProcess[] = [];
   t.after(async () => { for (const child of children) await stop(child); await rm(directory, { recursive: true, force: true }); });
@@ -38,33 +38,33 @@ test("standalone HTTP process and VPN bridge retain assignments and audit throug
   await api(first.url, "/admin/servers", { id: "demo", name: "Demo", kind: "demo" });
   await api(first.url, "/admin/access", { userId: "vpn-user", mcpServerId: "demo", granted: true }, "PUT");
 
-  const bridge = spawn(process.execPath, [resolve("scripts/claude-vpn-bridge.mjs")], {
-    env: { ...process.env, CRIA_GATEWAY_URL: first.url + "/mcp", CRIA_CLIENT_ID: "vpn-user" }, stdio: ["pipe", "pipe", "pipe"]
-  });
-  children.push(bridge);
-  let output = "";
-  bridge.stdout.on("data", chunk => { output += chunk; });
-  bridge.stdin.end([
+  const { token } = await api(first.url, "/admin/credentials", { userId: "vpn-user", deviceName: "Test device" });
+  const responses = [];
+  for (const message of [
     { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1" } } },
     { jsonrpc: "2.0", method: "notifications/initialized" },
     { jsonrpc: "2.0", id: 2, method: "tools/list" },
-    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "demo__demo.echo", arguments: { message: "via VPN bridge" } } }
-  ].map(message => JSON.stringify(message)).join("\n") + "\n");
-  const [code] = await once(bridge, "exit");
-  assert.equal(code, 0);
-  const responses = output.trim().split("\n").map(line => JSON.parse(line));
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "demo__demo.echo", arguments: { message: "via authenticated device" } } }
+  ]) {
+    const response = await fetch(first.url + "/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(message) });
+    assert.ok(response.ok);
+    if (message.id) responses.push(await response.json());
+  }
   assert.deepEqual(responses.map(r => r.id), [1, 2, 3]);
   assert.equal(responses[1].result.tools[0].name, "demo__demo.echo");
-  assert.equal(responses[2].result.content[0].text, "via VPN bridge");
+  assert.equal(responses[2].result.content[0].text, "via authenticated device");
   await stop(first.child);
   const second = await start();
   const config = await api(second.url, "/admin/config");
   assert.equal(config.users[0].id, "vpn-user");
   assert.deepEqual(config.assignments, [{ userId: "vpn-user", mcpServerId: "demo" }]);
+  const deviceList = await api(second.url, "/admin/credentials");
+  assert.ok(deviceList.credentials[0].lastUsedAt);
+  assert.ok(!JSON.stringify(deviceList).includes(token));
   const logs = await api(second.url, "/admin/logs");
   assert.equal(logs.events.length, 4);
   assert.ok(logs.events.every((e: { clientId: string }) => e.clientId === "vpn-user"));
-  assert.ok(logs.events.some((e: { headers: Record<string, string> }) => e.headers["x-client-id"] === "vpn-user"));
+  assert.ok(logs.events.some((e: { headers: Record<string, string> }) => e.headers.authorization === "[redacted]"));
 });
 
 async function stop(child: ChildProcess) {

@@ -10,6 +10,8 @@ on:
       - "scripts/**"
       - "Dockerfile"
       - "compose.yaml"
+      - "Caddyfile"
+      - "public/**"
       - ".dockerignore"
       - "package*.json"
       - ".github/workflows/self-hosted.yml"
@@ -30,3 +32,18 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: node scripts/smoke-docker.mjs
+
+  native-credentials:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: node --test test/native-store.test.mjs
+        env:
+          CRIA_TEST_NATIVE_STORE: "1"

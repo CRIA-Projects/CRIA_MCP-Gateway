@@ -1,10 +1,7 @@
 // Run on the user's VPN-connected computer, not inside the server container.
 import { createInterface } from "node:readline";
 
-const endpoint = new URL(process.env.CRIA_GATEWAY_URL ?? "");
-const clientId = process.env.CRIA_CLIENT_ID;
-if (!["http:", "https:"].includes(endpoint.protocol) || endpoint.username || endpoint.password) throw new Error("Set CRIA_GATEWAY_URL to the gateway HTTP(S) endpoint");
-if (!clientId || !/^[a-z0-9][a-z0-9-_]{0,62}$/.test(clientId)) throw new Error("Set CRIA_CLIENT_ID to the existing HUB user ID");
+import { credentialScope, credentialStore } from "./credential-store.mjs";
 
 async function rpcReply(response, id) {
   if (!(response.headers.get("content-type") ?? "").includes("text/event-stream")) return response.json();
@@ -28,28 +25,47 @@ async function rpcReply(response, id) {
   } finally { await reader.cancel().catch(() => {}); }
 }
 
+export async function runBridge({ env = process.env, input = process.stdin, output = process.stdout, log = console.error, readCredential = credentialStore, request = fetch } = {}) {
+  const endpoint = new URL(env.CRIA_GATEWAY_URL ?? "");
+  const profile = env.CRIA_CREDENTIAL_PROFILE;
+  credentialScope(endpoint, profile);
+  let token;
+  try {
+    token = await readCredential("read", endpoint, profile);
+    if (!/^cria_[a-f0-9]{64}$/.test(token)) throw new Error("Invalid credential");
+  } catch { throw new Error("CRIA credential unavailable. Ask Systems to enroll this device for this gateway URL and profile."); }
+
 async function forward(line) {
   let message;
   try { message = JSON.parse(line); }
-  catch { process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }) + "\n"); return; }
+  catch { output.write(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }) + "\n"); return; }
   try {
-    const response = await fetch(endpoint, {
+    const response = await request(endpoint, {
       method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "x-client-id": clientId },
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${token}` },
       body: JSON.stringify(message), signal: AbortSignal.timeout(60_000), redirect: "error"
     });
-    if (!response.ok) throw new Error("HTTP failure");
+    if (!response.ok) { log(`CRIA gateway HTTP ${response.status}; 401: check expiry/revocation, 403: check permissions`); throw new Error("HTTP failure"); }
     if (message.id === undefined) { await response.body?.cancel(); return; }
     const reply = await rpcReply(response, message.id);
     if (reply.jsonrpc !== "2.0" || reply.id !== message.id) throw new Error("Mismatched RPC response");
-    process.stdout.write(JSON.stringify(reply) + "\n");
+    output.write(JSON.stringify(reply) + "\n");
   } catch {
-    console.error("CRIA VPN bridge request failed; check VPN, endpoint and gateway logs");
-    if (message?.id !== undefined) process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, error: { code: -32603, message: "CRIA gateway request failed" } }) + "\n");
+    log("CRIA VPN bridge request failed; check VPN, endpoint and gateway logs");
+    if (message?.id !== undefined) output.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, error: { code: -32603, message: "CRIA gateway request failed" } }) + "\n");
   }
 }
 
 // Serialize input to preserve initialize/initialized order; stdout is MCP only.
-for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
+for await (const line of createInterface({ input, crlfDelay: Infinity })) {
   if (line.trim()) await forward(line);
+}
+
+}
+
+// Importing the runner for tests does not access native credentials or start stdin.
+import { pathToFileURL } from "node:url";
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try { await runBridge(); }
+  catch { console.error("CRIA startup failed: use HTTPS, a valid credential profile, and enroll the device in the OS credential store."); process.exitCode = 1; }
 }
